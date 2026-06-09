@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Forest Fire Simulation</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: monospace; background: #111; color: #eee; padding: 10px; }
+#layout { display: grid; grid-template-columns: auto 1fr; gap: 10px; }
+canvas#c { display: block; border: 1px solid #333; border-radius: 4px; }
+#right { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.chart-wrap { position: relative; height: 120px; width: 100%; }
+.clabel { font-size: 11px; color: #aaa; margin-bottom: 2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; color: #aaa; }
+.leg-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 3px; vertical-align: middle; }
+#controls { display: flex; align-items: center; gap: 12px; margin-top: 6px; font-size: 12px; color: #aaa; }
+#controls input[type=range] { width: 120px; vertical-align: middle; }
+#livebar { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.lstat { background: #1e1e1e; border-radius: 4px; padding: 3px 9px; font-size: 11px; }
+.lstat span { font-weight: bold; }
+#statsPanel { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 8px; }
+.scard { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px; padding: 8px 10px; }
+.stitle { font-size: 10px; color: #888; margin-bottom: 6px; letter-spacing: 0.04em; text-transform: uppercase; }
+.rows { display: flex; flex-direction: column; gap: 3px; }
+.row { display: flex; justify-content: space-between; font-size: 11px; }
+.row .k { color: #888; }
+.row .v { font-weight: bold; }
+.norm-c { color: #e07840; }
+.res-c  { color: #2acc80; }
+.fire-c { color: #ff5500; }
+</style>
+</head>
+<body>
+
+<div id="layout">
+  <div><canvas id="c"></canvas></div>
+  <div id="right">
+    <div class="clabel">Tree populations over time</div>
+    <div class="chart-wrap"><canvas id="treeChart"></canvas></div>
+    <div class="clabel">Fire cells over time</div>
+    <div class="chart-wrap"><canvas id="fireChart"></canvas></div>
+    <div class="legend">
+      <span><span class="leg-dot" style="background:#e07840"></span>Normal</span>
+      <span><span class="leg-dot" style="background:#2acc80"></span>Fire resistant</span>
+      <span><span class="leg-dot" style="background:#7aaa40"></span>Sapling</span>
+      <span><span class="leg-dot" style="background:#ff5500"></span>Fire</span>
+    </div>
+  </div>
+</div>
+
+<div id="controls">
+  Speed
+  <input type="range" id="speedSlider" min="1" max="5" value="2" step="1">
+  <span id="speedLabel"></span>
+</div>
+
+<div id="livebar"></div>
+
+<div id="statsPanel">
+  <div class="scard">
+    <div class="stitle">Population averages (all time)</div>
+    <div class="rows">
+      <div class="row"><span class="k">Avg normal</span><span class="v norm-c" id="avgNorm">—</span></div>
+      <div class="row"><span class="k">Avg fire resistant</span><span class="v res-c" id="avgRes">—</span></div>
+      <div class="row"><span class="k">Avg saplings</span><span class="v" id="avgSap">—</span></div>
+      <div class="row"><span class="k">Avg total trees</span><span class="v" id="avgTotal">—</span></div>
+    </div>
+  </div>
+  <div class="scard">
+    <div class="stitle">Peak values (all time)</div>
+    <div class="rows">
+      <div class="row"><span class="k">Peak normal</span><span class="v norm-c" id="peakNorm">—</span></div>
+      <div class="row"><span class="k">Peak fire resistant</span><span class="v res-c" id="peakRes">—</span></div>
+      <div class="row"><span class="k">Peak fire event</span><span class="v fire-c" id="peakFire">—</span></div>
+    </div>
+  </div>
+  <div class="scard">
+    <div class="stitle">Fire events</div>
+    <div class="rows">
+      <div class="row"><span class="k">Total ignitions</span><span class="v fire-c" id="totalIgnitions">—</span></div>
+      <div class="row"><span class="k">Major fires (&gt;70 cells)</span><span class="v" id="majorFires">—</span></div>
+      <div class="row"><span class="k">Avg fire duration</span><span class="v" id="avgFireDur">—</span></div>
+      <div class="row"><span class="k">Current season</span><span class="v" id="curSeason">—</span></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const CELL = 5;
+const COLS = 120, ROWS = 80;
+const W = COLS * CELL, H = ROWS * CELL;
+
+const canvas = document.getElementById('c');
+canvas.width = W; canvas.height = H;
+const ctx = canvas.getContext('2d');
+
+const EMPTY = 0, SAPLING = 1, NORM = 2, RES = 3, FIRE = 4, EMBER = 5;
+
+const SEASONS = [
+  { name: 'Spring', ticks: 500, growRate: 0.0014, fireChance: 0.0003,  rainChance: 0.0,    spread: 0.18 },
+  { name: 'Summer', ticks: 500, growRate: 0.0006, fireChance: 0.0018,  rainChance: 0.0001, spread: 0.82 },
+  { name: 'Autumn', ticks: 500, growRate: 0.0010, fireChance: 0.0002,  rainChance: 0.002,  spread: 0.10 },
+  { name: 'Winter', ticks: 500, growRate: 0.0004, fireChance: 0.00005, rainChance: 0.003,  spread: 0.0  },
+];
+
+const SPEEDS = [1, 2, 4, 8, 16];
+let stepsPerFrame = 2;
+let grid = [], tick = 0, seasonTick = 0, seasonIdx = 0, lastTime = 0;
+let flashEffects = [], fireIntensity = 1.0, fireIntensityLabel = '';
+
+const HIST = 600;
+let normHist = [], resHist = [], sapHist = [], fireHist = [];
+
+let agg = {
+  sumNorm: 0, sumRes: 0, sumSap: 0, sumTotalTrees: 0, samples: 0,
+  peakNorm: 0, peakRes: 0, peakFire: 0,
+  totalIgnitions: 0, fireDuration: 0, inFire: false, fireDurations: [], 
+  majorFires: 0, passedMajorThreshold: false
+};
+
+function rollFireIntensity() {
+  const r = Math.random();
+  if (r < 0.60) { fireIntensity = 0.35 + Math.random() * 0.15; fireIntensityLabel = 'Mild'; }
+  else if (r < 0.90) { fireIntensity = 0.55 + Math.random() * 0.15; fireIntensityLabel = 'Moderate'; }
+  else { fireIntensity = 0.75 + Math.random() * 0.25; fireIntensityLabel = 'Severe'; }
+}
+
+function rnd(n) { return Math.floor(Math.random() * n); }
+function rndF() { return Math.random(); }
+function makeCell(state) { return { state, age: 0, burnAge: 0 }; }
+
+function initGrid() {
+  grid = [];
+  for (let r = 0; r < ROWS; r++) {
+    grid[r] = [];
+    for (let c = 0; c < COLS; c++) grid[r][c] = makeCell(EMPTY);
+  }
+  for (let i = 0; i < 12; i++) {
+    const r = 10 + rnd(ROWS - 20), c = 10 + rnd(COLS - 20);
+    grid[r][c] = makeCell(rndF() < 0.5 ? NORM : RES);
+  }
+  tick = 0; seasonTick = 0; seasonIdx = 0; flashEffects = [];
+  normHist = []; resHist = []; sapHist = []; fireHist = [];
+  agg = { sumNorm:0,sumRes:0,sumSap:0,sumTotalTrees:0,samples:0,peakNorm:0,peakRes:0,peakFire:0,totalIgnitions:0,fireDuration:0,inFire:false,fireDurations:[],majorFires:0,passedMajorThreshold:false };
+  rollFireIntensity();
+}
+
+document.getElementById('speedSlider').addEventListener('input', function () {
+  stepsPerFrame = SPEEDS[+this.value - 1];
+  document.getElementById('speedLabel').textContent = ['Slow','Med-Slow','Medium','Fast','Max'][+this.value - 1];
+});
+document.getElementById('speedSlider').dispatchEvent(new Event('input'));
+
+function nbrs8(r, c) {
+  const o = [];
+  for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+    if (!dr && !dc) continue;
+    const rr = r + dr, cc = c + dc;
+    if (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS) o.push([rr, cc]);
+  }
+  return o;
+}
+function nbrs4(r, c) {
+  return [[r-1,c],[r+1,c],[r,c-1],[r,c+1]].filter(([rr,cc]) => rr>=0&&rr<ROWS&&cc>=0&&cc<COLS);
+}
+
+function step() {
+  const season = SEASONS[seasonIdx];
+  const fireChance = season.fireChance * fireIntensity;
+  const spread = Math.min(season.spread * fireIntensity, 0.97);
+  const next = [];
+  for (let r = 0; r < ROWS; r++) {
+    next[r] = [];
+    for (let c = 0; c < COLS; c++) next[r][c] = { ...grid[r][c], age: grid[r][c].age + 1 };
+  }
+
+  let newIgnitions = 0;
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = grid[r][c], s = cell.state;
+
+      if (s === EMPTY) {
+        if (rndF() < season.growRate * 0.03) {
+          next[r][c] = makeCell(SAPLING);
+        } else {
+          const tn = nbrs8(r,c).filter(([rr,cc]) => {
+            const ns = grid[rr][cc].state;
+            return ns === NORM || ns === RES || ns === SAPLING;
+          }).length;
+          if (tn > 0 && rndF() < season.growRate * tn * 0.06) next[r][c] = makeCell(SAPLING);
+        }
+      }
+
+      else if (s === SAPLING) {
+        if (cell.age > 180 + rnd(80)) {
+            const nbrs = nbrs8(r, c);
+            const matureNbrs = nbrs.filter(([rr, cc]) => grid[rr][cc].state === NORM || grid[rr][cc].state === RES);
+            if (matureNbrs.length === 0) {
+                next[r][c].state = rndF() < 0.5 ? RES : NORM;
+            } else {
+                const normCount = matureNbrs.filter(([rr, cc]) => grid[rr][cc].state === NORM).length;
+                const probNorm = normCount / matureNbrs.length;
+                next[r][c].state = rndF() < probNorm ? NORM : RES;
+            }
+        }
+        if (spread > 0) {
+          const fn = nbrs8(r,c).filter(([rr,cc]) => grid[rr][cc].state === FIRE).length;
+          if (fn > 0 && rndF() < spread * 0.55 * fn) { next[r][c] = makeCell(FIRE); newIgnitions++; }
+        }
+        if (rndF() < fireChance) { next[r][c] = makeCell(FIRE); flashEffects.push({r,c,age:0,type:'fire'}); newIgnitions++; }
+      }
+
+      else if (s === NORM) {
+        if (spread > 0) {
+          const fn = nbrs8(r,c).filter(([rr,cc]) => grid[rr][cc].state === FIRE).length;
+          if (fn > 0 && rndF() < spread * fn * 0.42) { next[r][c] = makeCell(FIRE); newIgnitions++; }
+        }
+        if (rndF() < fireChance * 1.2) { next[r][c] = makeCell(FIRE); flashEffects.push({r,c,age:0,type:'fire'}); newIgnitions++; }
+      }
+
+      else if (s === RES) {
+        if (spread > 0) {
+          const fn = nbrs8(r,c).filter(([rr,cc]) => grid[rr][cc].state === FIRE).length;
+          if (fn > 0 && rndF() < spread * fn * 0.07) { next[r][c] = makeCell(FIRE); newIgnitions++; }
+        }
+        if (rndF() < fireChance * 0.15) { next[r][c] = makeCell(FIRE); flashEffects.push({r,c,age:0,type:'fire'}); newIgnitions++; }
+      }
+
+      else if (s === FIRE) {
+        next[r][c].burnAge = (cell.burnAge || 0) + 1;
+        if (season.rainChance > 0 && rndF() < season.rainChance) {
+          next[r][c] = makeCell(EMBER); flashEffects.push({r,c,age:0,type:'rain'});
+        } else if ((cell.burnAge || 0) > 3 + rnd(5)) {
+          next[r][c] = makeCell(EMBER);
+        }
+      }
+
+      else if (s === EMBER) {
+        if (season.rainChance > 0 && rndF() < season.rainChance) {
+          next[r][c] = makeCell(EMPTY); flashEffects.push({r,c,age:0,type:'rain'});
+        } else if (cell.age > 6 + rnd(8)) next[r][c] = makeCell(EMPTY);
+        if (spread > 0) {
+          const targets = nbrs4(r,c).filter(([rr,cc]) => grid[rr][cc].state === NORM || grid[rr][cc].state === RES);
+          if (targets.length && rndF() < spread * 0.08) {
+            const [tr, tc] = targets[rnd(targets.length)];
+            if (grid[tr][tc].state === RES) { if (rndF() < 0.12) { next[tr][tc] = makeCell(FIRE); newIgnitions++; } }
+            else { next[tr][tc] = makeCell(FIRE); newIgnitions++; }
+          }
+        }
+      }
+    }
+  }
+
+  grid = next;
+
+  let normCt = 0, resCt = 0, sapCt = 0, fireCt = 0;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const s = grid[r][c].state;
+    if (s === NORM) normCt++;
+    else if (s === RES) resCt++;
+    else if (s === SAPLING) sapCt++;
+    else if (s === FIRE) fireCt++;
+  }
+
+  if (normCt + resCt === 0 && (seasonIdx === 0 || seasonIdx === 3)) {
+    const cr = Math.floor(ROWS/2) + rnd(10) - 5, cc = Math.floor(COLS/2) + rnd(10) - 5;
+    grid[cr][cc] = makeCell(rndF() < 0.5 ? NORM : RES);
+  }
+
+  agg.samples++;
+  agg.sumNorm += normCt; agg.sumRes += resCt; agg.sumSap += sapCt;
+  agg.sumTotalTrees += (normCt + resCt + sapCt);
+
+  if (normCt > agg.peakNorm) agg.peakNorm = normCt;
+  if (resCt > agg.peakRes) agg.peakRes = resCt;
+  if (fireCt > agg.peakFire) agg.peakFire = fireCt;
+  agg.totalIgnitions += newIgnitions;
+
+  if (fireCt > 0) {
+    agg.fireDuration++;
+    if (!agg.inFire) agg.inFire = true;
+    if (fireCt > 70) agg.passedMajorThreshold = true;
+  } else {
+    if (agg.inFire) { 
+      agg.fireDurations.push(agg.fireDuration); agg.fireDuration = 0; agg.inFire = false; 
+      if (agg.passedMajorThreshold) { agg.majorFires++; agg.passedMajorThreshold = false; }
+    }
+  }
+
+  if (tick % 4 === 0) {
+    normHist.push(normCt); resHist.push(resCt); sapHist.push(sapCt); fireHist.push(fireCt);
+    if (normHist.length > HIST) { normHist.shift(); resHist.shift(); sapHist.shift(); fireHist.shift(); }
+  }
+
+  seasonTick++;
+  if (seasonTick >= SEASONS[seasonIdx].ticks) {
+    seasonTick = 0; seasonIdx = (seasonIdx + 1) % SEASONS.length;
+    if (seasonIdx === 1) rollFireIntensity();
+    else if (seasonIdx === 0) { fireIntensity = 0.5 + Math.random() * 0.2; fireIntensityLabel = 'Moderate'; }
+    else { fireIntensity = 0.0; fireIntensityLabel = ''; }
+  }
+
+  flashEffects = flashEffects.filter(f => { f.age++; return f.age < 10; });
+  tick++;
+}
+
+function draw() {
+  ctx.fillStyle = '#1a1208'; ctx.fillRect(0, 0, W, H);
+  let normCt = 0, resCt = 0, sapCt = 0, fireCt = 0;
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const s = grid[r][c].state;
+      if (s === EMPTY) continue;
+      if      (s === NORM)    { normCt++; ctx.fillStyle = '#8b3a10'; }
+      else if (s === RES)     { resCt++;  ctx.fillStyle = '#1a6b3c'; }
+      else if (s === SAPLING) { sapCt++;  ctx.fillStyle = '#4a7a3a'; }
+      else if (s === FIRE)    { fireCt++; const fl = 0.7 + Math.random() * 0.3; ctx.fillStyle = `rgb(${Math.floor(255*fl)},${Math.floor(55*fl)},0)`; }
+      else if (s === EMBER)   { ctx.fillStyle = '#2a0d00'; }
+      ctx.fillRect(c * CELL, r * CELL, CELL - 1, CELL - 1);
+    }
+  }
+  for (const f of flashEffects) {
+    const alpha = (1 - f.age / 10) * 0.7;
+    ctx.fillStyle = f.type === 'fire' ? `rgba(255,220,50,${alpha})` : `rgba(100,180,255,${alpha})`;
+    ctx.fillRect(f.c * CELL - CELL, f.r * CELL - CELL, CELL * 3, CELL * 3);
+  }
+
+  const season = SEASONS[seasonIdx];
+  const iStr = fireIntensityLabel ? ` · ${fireIntensityLabel}` : '';
+  const totalTicksPerYear = SEASONS.reduce((acc, s) => acc + s.ticks, 0);
+  const currentYear = Math.floor(tick / totalTicksPerYear) + 1;
+
+  document.getElementById('livebar').innerHTML =
+    `<div class="lstat">Year: <span>${currentYear}</span></div>` +
+    `<div class="lstat">Season: <span>${season.name}${iStr}</span></div>` +
+    `<div class="lstat">Normal: <span class="norm-c">${normCt}</span></div>` +
+    `<div class="lstat">Resistant: <span class="res-c">${resCt}</span></div>` +
+    `<div class="lstat">Saplings: <span>${sapCt}</span></div>` +
+    `<div class="lstat">Fire: <span class="fire-c">${fireCt}</span></div>`;
+
+  if (agg.samples > 0) {
+    document.getElementById('avgNorm').textContent  = Math.round(agg.sumNorm / agg.samples);
+    document.getElementById('avgRes').textContent   = Math.round(agg.sumRes / agg.samples);
+    document.getElementById('avgSap').textContent   = Math.round(agg.sumSap / agg.samples);
+    document.getElementById('avgTotal').textContent = Math.round(agg.sumTotalTrees / agg.samples);
+    document.getElementById('peakNorm').textContent = agg.peakNorm;
+    document.getElementById('peakRes').textContent  = agg.peakRes;
+    document.getElementById('peakFire').textContent = agg.peakFire + ' cells';
+    document.getElementById('totalIgnitions').textContent = agg.totalIgnitions.toLocaleString();
+    document.getElementById('majorFires').textContent = agg.majorFires;
+    const avgDur = agg.fireDurations.length > 0
+      ? Math.round(agg.fireDurations.reduce((a,b) => a+b,0) / agg.fireDurations.length) : 0;
+    document.getElementById('avgFireDur').textContent = avgDur + ' ticks';
+    document.getElementById('curSeason').textContent = season.name + (fireIntensityLabel ? ' · ' + fireIntensityLabel : '');
+  }
+}
+
+const chartOpts = {
+  responsive: true, maintainAspectRatio: false, animation: false,
+  plugins: { legend: { display: false } },
+  elements: { point: { radius: 0 }, line: { borderWidth: 1.5 } },
+  scales: {
+    x: { display: false },
+    y: { min: 0, ticks: { color: '#888', font: { size: 10 }, maxTicksLimit: 4 }, grid: { color: 'rgba(255,255,255,0.06)' } }
+  }
+};
+
+const treeChart = new Chart(document.getElementById('treeChart'), {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'Normal',    data: [], borderColor: '#e07840', backgroundColor: 'rgba(224,120,64,0.15)', fill: true },
+    { label: 'Resistant', data: [], borderColor: '#2acc80', backgroundColor: 'rgba(42,204,128,0.12)', fill: true },
+    { label: 'Sapling',   data: [], borderColor: '#7aaa40', backgroundColor: 'rgba(122,170,64,0.07)', fill: true },
+  ]},
+  options: chartOpts
+});
+
+const fireChart = new Chart(document.getElementById('fireChart'), {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'Fire', data: [], borderColor: '#ff5500', backgroundColor: 'rgba(255,85,0,0.18)', fill: true }
+  ]},
+  options: chartOpts
+});
+
+let chartTick = 0;
+function updateCharts() {
+  const len = normHist.length;
+  const labels = Array.from({ length: len }, (_, i) => i);
+  treeChart.data.labels = labels;
+  treeChart.data.datasets[0].data = [...normHist];
+  treeChart.data.datasets[1].data = [...resHist];
+  treeChart.data.datasets[2].data = [...sapHist];
+  treeChart.update('none');
+  fireChart.data.labels = labels;
+  fireChart.data.datasets[0].data = [...fireHist];
+  fireChart.update('none');
+}
+
+function loop(timestamp) {
+  if (timestamp - lastTime >= 16) {
+    for (let i = 0; i < stepsPerFrame; i++) step();
+    draw();
+    if (chartTick % 3 === 0) updateCharts();
+    chartTick++;
+    lastTime = timestamp;
+  }
+  requestAnimationFrame(loop);
+}
+
+initGrid();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
