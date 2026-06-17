@@ -29,17 +29,19 @@ function updateCharts(){
 }
 
 const EXP_Y_TICKS=[0,250,500,750,1000,3000,5000,7000,9000];
-const expChartXScale={display:true,ticks:{color:'#888',font:{size:9},maxTicksLimit:10,
-  callback:(v)=>{const yr=Math.round(v*EXP_SAMPLE_EVERY/TICKS_PER_YEAR);return yr+'yr';}},
-  grid:{color:'rgba(255,255,255,0.04)'}};
+
+function makeExpXScale(sampleEvery){
+  const TICKS_PER_YEAR=buildSeasons().reduce((a,s)=>a+s.ticks,0);
+  return{display:true,ticks:{color:'#888',font:{size:9},maxTicksLimit:10,
+    callback:(v)=>{const yr=Math.round(v*sampleEvery/TICKS_PER_YEAR);return yr+'yr';}},
+    grid:{color:'rgba(255,255,255,0.04)'}};
+}
 
 function makeExpYScale(){
-  return{
-    type:'linear',min:0,max:9000,
+  return{type:'linear',min:0,max:9000,
     afterBuildTicks:(axis)=>{axis.ticks=EXP_Y_TICKS.map(v=>({value:v}));},
     ticks:{color:'#888',font:{size:10},padding:4,callback:(v)=>v>=1000?(v/1000).toFixed(0)+'k':v},
-    grid:{color:(ctx)=>ctx.tick.value===1000?'rgba(255,255,255,0.18)':'rgba(255,255,255,0.06)'}
-  };
+    grid:{color:(ctx)=>ctx.tick.value===1000?'rgba(255,255,255,0.18)':'rgba(255,255,255,0.06)'}};
 }
 
 function makeExpChartOpts(){
@@ -47,28 +49,19 @@ function makeExpChartOpts(){
     layout:{padding:{top:12,right:8,bottom:4,left:4}},
     plugins:{legend:{display:true,labels:{color:'#aaa',font:{size:10},boxWidth:10,padding:8}}},
     elements:{point:{radius:0},line:{borderWidth:1.5}},
-    scales:{x:expChartXScale,y:makeExpYScale()}};
+    scales:{x:makeExpXScale(EXP_SAMPLE_EVERY),y:makeExpYScale()}};
 }
 
-const expChart=new Chart(document.getElementById('expChart'),{
-  type:'line',
-  data:{labels:Array.from({length:EXP_SAMPLES},(_,i)=>i),datasets:[]},
-  options:makeExpChartOpts()
-});
+function updateExpChart(){}
 
-const expChartNorm=new Chart(document.getElementById('expChartNorm'),{
-  type:'line',
-  data:{labels:Array.from({length:EXP_SAMPLES},(_,i)=>i),datasets:[]},
-  options:makeExpChartOpts()
-});
+const sweepChart=new Chart(document.getElementById('sweepChart'),{type:'line',
+  data:{labels:Array.from({length:500},(_,i)=>i),datasets:[]},options:makeExpChartOpts()});
+const sweepChartNorm=new Chart(document.getElementById('sweepChartNorm'),{type:'line',
+  data:{labels:Array.from({length:500},(_,i)=>i),datasets:[]},options:makeExpChartOpts()});
 
-function updateExpChart(){
-  expChart.data.datasets=expResults.map(r=>({
-    label:r.label,data:r.dataRes,borderColor:'#2acc80',backgroundColor:'rgba(42,204,128,0.1)',fill:false
-  }));
-  expChart.update('none');
-  expChartNorm.data.datasets=expResults.map(r=>({
-    label:r.label,data:r.dataNorm,borderColor:'#e07840',backgroundColor:'rgba(224,120,64,0.1)',fill:false
-  }));
-  expChartNorm.update('none');
+function updateSweepChart(){
+  sweepChart.data.datasets=sweepResults.map(r=>({label:r.label,data:r.dataRes,borderColor:r.color,backgroundColor:'transparent',fill:false}));
+  sweepChart.update('none');
+  sweepChartNorm.data.datasets=sweepResults.map(r=>({label:r.label,data:r.dataNorm,borderColor:r.color,backgroundColor:'transparent',fill:false}));
+  sweepChartNorm.update('none');
 }
