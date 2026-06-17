@@ -5,11 +5,42 @@ const ctx=canvas.getContext('2d');
 const SPEEDS=[1,2,4,8,16];
 let stepsPerFrame=2,paused=false,lastTime=0;
 
-function updateInfBtn(){
-  const b=document.getElementById('infBtn');
-  if(infectionActive){b.textContent='Infection: ON';b.className='ctrl-btn inf-on';}
-  else{b.textContent='Infection: OFF';b.className='ctrl-btn inf-off';}
+const TOGGLE_DEFS=[
+  {key:'infection',   id:'togInfection',  label:'Infection'},
+  {key:'seasons',     id:'togSeasons',    label:'Seasons'},
+  {key:'fire',        id:'togFire',       label:'Fire'},
+  {key:'nbrSpread',   id:'togNbrSpread',  label:'Infection Spread'},
+  {key:'rain',        id:'togRain',       label:'Rain'},
+];
+
+function updateToggleBtn(def){
+  const b=document.getElementById(def.id);
+  if(!b)return;
+  const on=TOGGLES[def.key];
+  b.textContent=`${def.label}: ${on?'ON':'OFF'}`;
+  b.className=on?'ctrl-btn tog-on':'ctrl-btn tog-off';
 }
+
+function updateAllToggles(){
+  TOGGLE_DEFS.forEach(updateToggleBtn);
+}
+
+TOGGLE_DEFS.forEach(def=>{
+  const b=document.getElementById(def.id);
+  if(!b)return;
+  b.addEventListener('click',()=>{
+    if(expRunning||sweepRunning)return;
+    TOGGLES[def.key]=!TOGGLES[def.key];
+    
+    if(def.key==='infection'&&TOGGLES.infection){
+      let seeded=0;
+      for(let r=0;r<ROWS&&seeded<5;r++)for(let c=0;c<COLS&&seeded<5;c++){
+        if(grid[r][c].state===RES&&rndF()<.12){grid[r][c]=makeCell(INFECTED);seeded++;}
+      }
+    }
+    updateToggleBtn(def);
+  });
+});
 
 document.getElementById('speedSlider').addEventListener('input',function(){
   stepsPerFrame=SPEEDS[+this.value-1];
@@ -22,28 +53,32 @@ document.getElementById('pauseBtn').addEventListener('click',function(){
   this.textContent=paused?'Resume':'Pause';
 });
 
-document.getElementById('infBtn').addEventListener('click',function(){
-  if(expRunning)return;
-  infectionActive=!infectionActive;
-  updateInfBtn();
-  if(infectionActive){
-    let seeded=0;
-    for(let r=0;r<ROWS&&seeded<5;r++)for(let c=0;c<COLS&&seeded<5;c++){
-      if(grid[r][c].state===RES&&rndF()<.12){grid[r][c]=makeCell(INFECTED);seeded++;}
-    }
-  }
+document.getElementById('resetBtn').addEventListener('click',()=>{
+  if(expRunning||sweepRunning)return;
+  resetParams();
+  updateAllToggles();
+  initGrid(0.5);
 });
 
-document.getElementById('expBtn').addEventListener('click',startExperiment);
-document.getElementById('expClear').addEventListener('click',()=>{
-  if(expRunning)return;
-  expResults=[];
-  expChart.data.datasets=[];
-  expChart.update('none');
-  expChartNorm.data.datasets=[];
-  expChartNorm.update('none');
-  document.getElementById('expProgress').textContent='';
+document.getElementById('sweepBtn').addEventListener('click',startSweep);
+document.getElementById('sweepClear').addEventListener('click',()=>{
+  if(sweepRunning)return;
+  sweepResults=[];
+  sweepChart.data.datasets=[];sweepChart.update('none');
+  sweepChartNorm.data.datasets=[];sweepChartNorm.update('none');
+  document.getElementById('sweepProgress').textContent='';
 });
+
+document.getElementById('sweepParam').addEventListener('change',function(){
+  const p=PARAMETERS.find(p=>p.key===this.value);
+  if(!p)return;
+  document.getElementById('sweepMin').value=p.min;
+  document.getElementById('sweepMax').value=p.max;
+  document.getElementById('sweepStep').value=p.step;
+  const defaultVal=PARAMS[p.key];
+  document.getElementById('sweepDefault').textContent=`default: ${defaultVal}`;
+});
+document.getElementById('sweepParam').dispatchEvent(new Event('change'));
 
 function draw(){
   ctx.fillStyle='#1a1208';ctx.fillRect(0,0,W,H);
@@ -66,9 +101,10 @@ function draw(){
     ctx.fillStyle=f.type==='fire'?`rgba(255,220,50,${alpha})`:`rgba(100,180,255,${alpha})`;
     ctx.fillRect(f.c*CELL-CELL,f.r*CELL-CELL,CELL*3,CELL*3);
   }
-
-  const season=SEASONS[seasonIdx];
+  const seasons=getSeasons();
+  const season=seasons[seasonIdx%seasons.length];
   const iStr=fireIntensityLabel?` · ${fireIntensityLabel}`:'';
+  const TICKS_PER_YEAR=seasons.reduce((a,s)=>a+s.ticks,0);
   const currentYear=Math.floor(tick/TICKS_PER_YEAR)+1;
 
   document.getElementById('livebar').innerHTML=
@@ -78,7 +114,7 @@ function draw(){
     `<div class="lstat">Resistant: <span class="res-c">${resCt}</span></div>`+
     `<div class="lstat">Saplings: <span>${sapCt}</span></div>`+
     `<div class="lstat">Fire: <span class="fire-c">${fireCt}</span></div>`+
-    (infectionActive?`<div class="lstat">Infected: <span class="inf-c">${infCt}</span></div>`:'');
+    (TOGGLES.infection?`<div class="lstat">Infected: <span class="inf-c">${infCt}</span></div>`:'');
 
   if(agg.samples>0){
     document.getElementById('avgNorm').textContent=Math.round(agg.sumNorm/agg.samples);
@@ -90,28 +126,27 @@ function draw(){
     document.getElementById('peakFire').textContent=agg.peakFire+' cells';
     document.getElementById('totalIgnitions').textContent=agg.totalIgnitions.toLocaleString();
     document.getElementById('majorFires').textContent=agg.majorFires;
-    document.getElementById('infNow').textContent=infectionActive?infCt:'off';
+    document.getElementById('infNow').textContent=TOGGLES.infection?infCt:'off';
     document.getElementById('curSeason').textContent=season.name+(fireIntensityLabel?' · '+fireIntensityLabel:'');
   }
 }
 
 function loop(timestamp){
   if(timestamp-lastTime>=16){
-    if(expRunning){
-      expTick();
-      draw();
-      updateCharts();
+    if(sweepRunning){
+      sweepTick();draw();updateCharts();
+    } else if(expRunning){
+      expTick();draw();updateCharts();
     } else if(!paused){
       for(let i=0;i<stepsPerFrame;i++)step();
       draw();
       if(chartTick%3===0)updateCharts();
     }
-    chartTick++;
-    lastTime=timestamp;
+    chartTick++;lastTime=timestamp;
   }
   requestAnimationFrame(loop);
 }
 
-initGrid(0.5,false);
-updateInfBtn();
+initGrid(0.5);
+updateAllToggles();
 requestAnimationFrame(loop);
