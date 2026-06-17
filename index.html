@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
 <div id="layout">
   <div><canvas id="c"></canvas></div>
   <div id="right">
@@ -30,7 +31,18 @@
   &nbsp;|&nbsp;
   <button class="ctrl-btn" id="pauseBtn">Pause</button>
   &nbsp;|&nbsp;
-  <button class="ctrl-btn inf-off" id="infBtn">Infection: OFF</button>
+  <button class="ctrl-btn" id="resetBtn">Reset to defaults</button>
+</div>
+
+<div id="togglePanel">
+  <div class="panel-title">FEATURE TOGGLES</div>
+  <div id="toggleBtns">
+    <button id="togInfection"  class="ctrl-btn tog-off">Infection: OFF</button>
+    <button id="togSeasons"    class="ctrl-btn tog-on">Seasons: ON</button>
+    <button id="togFire"       class="ctrl-btn tog-on">Fire: ON</button>
+    <button id="togNbrSpread"  class="ctrl-btn tog-on">Infection Spread: ON</button>
+    <button id="togRain"       class="ctrl-btn tog-on">Rain: ON</button>
+  </div>
 </div>
 
 <div id="livebar"></div>
@@ -64,32 +76,48 @@
   </div>
 </div>
 
-<div id="expPanel">
-  <div class="stitle">Experiment: resistant tree evolution</div>
-  <div id="expControls">
+<div id="sweepPanel" class="exp-panel">
+  <div class="stitle">Parameters</div>
+  <div class="exp-controls">
+    Parameter:
+    <select id="sweepParam">
+      <option value="fireSpreadNorm">Fire spread (normal)</option>
+      <option value="fireSpreadRes">Fire spread (resistant)</option>
+      <option value="infSpread">Infection spread</option>
+      <option value="infSpont">Infection spontaneous</option>
+      <option value="infDeathMin">Infection death speed</option>
+      <option value="growMultiplier">Tree growth rate</option>
+    </select>
+    Min: <input type="number" id="sweepMin" style="width:60px">
+    Max: <input type="number" id="sweepMax" style="width:60px">
+    Step: <input type="number" id="sweepStep" style="width:60px">
+    <span id="sweepDefault" style="color:#666;font-size:11px;"></span>
+  </div>
+  <div class="exp-controls" style="margin-top:5px;">
     Resistance start:
-    <select id="expCondition">
+    <select id="sweepCondition">
       <option value="0">0% resistant</option>
       <option value="0.25">25% resistant</option>
       <option value="0.5">50% resistant</option>
       <option value="0.75">75% resistant</option>
     </select>
     Infection:
-    <select id="expInfection">
+    <select id="sweepInfection">
       <option value="0">Off</option>
       <option value="1">On</option>
     </select>
-    <button id="expBtn">Run experiment (10 runs)</button>
-    <button id="expClear">Clear results</button>
+    <button id="sweepBtn">Run sweep</button>
+    <button id="sweepClear">Clear</button>
   </div>
-  <div id="expProgress"></div>
-  <div class="clabel">Avg resistant trees over time — 10 runs averaged per condition</div>
-  <div class="chart-wrap-exp"><canvas id="expChart"></canvas></div>
-  <div class="clabel" style="margin-top:8px;">Avg normal (non-resistant) trees over time — 10 runs averaged per condition</div>
-  <div class="chart-wrap-exp"><canvas id="expChartNorm"></canvas></div>
+  <div id="sweepProgress"></div>
+  <div class="clabel" style="margin-top:6px;">Avg resistant trees — sweep results</div>
+  <div class="chart-wrap-exp"><canvas id="sweepChart"></canvas></div>
+  <div class="clabel" style="margin-top:8px;">Avg normal trees — sweep results</div>
+  <div class="chart-wrap-exp"><canvas id="sweepChartNorm"></canvas></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="params.js"></script>
 <script src="simulation.js"></script>
 <script src="experiment.js"></script>
 <script src="charts.js"></script>
