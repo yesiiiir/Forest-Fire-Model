@@ -95,7 +95,7 @@ tr:hover{background:#1f1f1f;}
 <script>
 const SUPABASE_URL='https://dkooarbkotlxibvhmrhk.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRrb29hcmJrb3RseGlidmhtcmhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzMzU2OTYsImV4cCI6MjA5NzkxMTY5Nn0.xZJ3ANhM-AVIWSt5xWuu17P5CEkWfNRBeqh7cY774bg';
-const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
 let allRows=[];
 
@@ -176,7 +176,7 @@ function populateExperimentFilter(rows){
 
 async function loadData(){
   document.getElementById('status').textContent='Loading...';
-  const{data,error}=await supabase.from('experiments').select('*').order('created_at',{ascending:true});
+  const{data,error}=await sb.from('experiments').select('*').order('created_at',{ascending:true});
   if(error){
     document.getElementById('status').textContent='Error loading data: '+error.message;
     return;
