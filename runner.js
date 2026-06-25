@@ -1,6 +1,12 @@
 const{Worker}=require('worker_threads');
-const fs=require('fs');
 const path=require('path');
+const{createClient}=require('@supabase/supabase-js');
+
+const SUPABASE_URL='https://dkooarbkotlxibvhmrhk.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRrb29hcmJrb3RseGlidmhtcmhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzMzU2OTYsImV4cCI6MjA5NzkxMTY5Nn0.xZJ3ANhM-AVIWSt5xWuu17P5CEkWfNRBeqh7cY774bg';
+const supabase=createClient(SUPABASE_URL,SUPABASE_KEY);
+
+const EXPERIMENT_NAME='infSpread_vs_infDeathMin';
 
 const INF_SPREAD_VALUES=[0.1,0.2,0.32,0.5,0.7];
 const INF_DEATH_MIN_VALUES=[10,25,35,60,100];
@@ -13,7 +19,6 @@ for(const infSpread of INF_SPREAD_VALUES){
 }
 
 const MAX_WORKERS=4;
-const results=[];
 let completedCount=0;
 let activeWorkers=0;
 let queueIdx=0;
@@ -30,28 +35,33 @@ function runNext(){
         params:{infSpread:combo.infSpread,infDeathMin:combo.infDeathMin}
       }
     });
-    worker.on('message',(msg)=>{
+    worker.on('message',async(msg)=>{
       completedCount++;
       activeWorkers--;
-      results.push({...msg.combo,...msg.result});
-      console.log(`Done ${completedCount}/${combinations.length} — infSpread=${msg.combo.infSpread} infDeathMin=${msg.combo.infDeathMin} → finalRes=${msg.result.finalRes} finalNorm=${msg.result.finalNorm}`);
+
+      const{error}=await supabase.from('experiments').insert({
+        experiment_name:EXPERIMENT_NAME,
+        params:msg.combo,
+        final_res:msg.result.finalRes,
+        final_norm:msg.result.finalNorm,
+        peak_res:msg.result.peakRes,
+        peak_norm:msg.result.peakNorm
+      });
+
+      if(error){
+        console.error(`Error saving combo infSpread=${msg.combo.infSpread} infDeathMin=${msg.combo.infDeathMin}:`,error.message);
+      } else {
+        console.log(`Done ${completedCount}/${combinations.length} — infSpread=${msg.combo.infSpread} infDeathMin=${msg.combo.infDeathMin} → finalRes=${msg.result.finalRes} finalNorm=${msg.result.finalNorm} (saved to Supabase)`);
+      }
+
       if(completedCount===combinations.length){
-        saveResults();
+        console.log('\nAll combinations complete and saved to Supabase.');
       } else {
         runNext();
       }
     });
     worker.on('error',(err)=>console.error('Worker error:',err));
   }
-}
-
-function saveResults(){
-  const headers=['infSpread','infDeathMin','finalRes','finalNorm','peakRes','peakNorm'];
-  const rows=results.map(r=>headers.map(h=>r[h]).join(','));
-  const csv=[headers.join(','),...rows].join('\n');
-  const outPath=path.join(__dirname,'results.csv');
-  fs.writeFileSync(outPath,csv);
-  console.log(`\nDone! Results saved to results.csv`);
 }
 
 runNext();
