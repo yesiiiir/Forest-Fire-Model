@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Forest Fire Experiments — Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:monospace;background:#111;color:#eee;padding:14px;font-size:12px;}
+h1{font-size:16px;margin-bottom:4px;}
+.subtitle{color:#888;font-size:12px;margin-bottom:14px;}
+#controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:8px 10px;}
+#controls select,#controls button{font-size:11px;background:#222;color:#eee;border:1px solid #444;border-radius:4px;padding:4px 8px;cursor:pointer;}
+#controls button:hover{background:#333;}
+#status{font-size:11px;color:#888;margin-bottom:10px;}
+#statCards{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;}
+.scard{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:8px 10px;}
+.scard .label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;}
+.scard .value{font-size:18px;font-weight:bold;}
+.norm-c{color:#e07840;}.res-c{color:#2acc80;}
+#chartsRow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+.chart-wrap{position:relative;height:300px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:10px;}
+.clabel{font-size:11px;color:#aaa;margin-bottom:6px;}
+table{width:100%;border-collapse:collapse;font-size:11px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;overflow:hidden;}
+th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #2a2a2a;}
+th{color:#888;text-transform:uppercase;font-size:10px;letter-spacing:.04em;background:#161616;}
+tr:hover{background:#1f1f1f;}
+#tableWrap{max-height:400px;overflow-y:auto;}
+</style>
+</head>
+<body>
+
+<h1>Forest Fire Experiments Dashboard</h1>
+<div class="subtitle">Live results from Supabase — all parameter sweep experiments</div>
+
+<div id="controls">
+  Experiment:
+  <select id="experimentFilter">
+    <option value="all">All experiments</option>
+  </select>
+  <button id="refreshBtn">Refresh</button>
+</div>
+
+<div id="status">Loading...</div>
+
+<div id="statCards">
+  <div class="scard">
+    <div class="label">Total Runs</div>
+    <div class="value" id="statTotal">—</div>
+  </div>
+  <div class="scard">
+    <div class="label">Avg Final Resistant</div>
+    <div class="value res-c" id="statAvgRes">—</div>
+  </div>
+  <div class="scard">
+    <div class="label">Avg Final Normal</div>
+    <div class="value norm-c" id="statAvgNorm">—</div>
+  </div>
+  <div class="scard">
+    <div class="label">Highest Peak Resistant</div>
+    <div class="value res-c" id="statMaxRes">—</div>
+  </div>
+</div>
+
+<div id="chartsRow">
+  <div class="chart-wrap">
+    <div class="clabel">Final Resistant Trees by Run</div>
+    <canvas id="resChart"></canvas>
+  </div>
+  <div class="chart-wrap">
+    <div class="clabel">Final Normal Trees by Run</div>
+    <canvas id="normChart"></canvas>
+  </div>
+</div>
+
+<div class="clabel">All Results</div>
+<div id="tableWrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Experiment</th>
+        <th>Params</th>
+        <th>Final Resistant</th>
+        <th>Final Normal</th>
+        <th>Peak Resistant</th>
+        <th>Peak Normal</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script>
+const SUPABASE_URL='https://dkooarbkotlxibvhmrhk.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRrb29hcmJrb3RseGlidmhtcmhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzMzU2OTYsImV4cCI6MjA5NzkxMTY5Nn0.xZJ3ANhM-AVIWSt5xWuu17P5CEkWfNRBeqh7cY774bg';
+const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+let allRows=[];
+
+const baseChartOpts={
+  responsive:true,maintainAspectRatio:false,animation:false,
+  plugins:{legend:{display:false}},
+  scales:{
+    x:{ticks:{color:'#888',font:{size:9}},grid:{color:'rgba(255,255,255,0.06)'}},
+    y:{ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,0.06)'}}
+  }
+};
+
+const resChart=new Chart(document.getElementById('resChart'),{
+  type:'bar',
+  data:{labels:[],datasets:[{label:'Final Resistant',data:[],backgroundColor:'#2acc80'}]},
+  options:baseChartOpts
+});
+const normChart=new Chart(document.getElementById('normChart'),{
+  type:'bar',
+  data:{labels:[],datasets:[{label:'Final Normal',data:[],backgroundColor:'#e07840'}]},
+  options:baseChartOpts
+});
+
+function formatParams(row){
+  if(row.params)return JSON.stringify(row.params);
+  const parts=[];
+  if(row.inf_spread!==null&&row.inf_spread!==undefined)parts.push(`infSpread=${row.inf_spread}`);
+  if(row.inf_death_min!==null&&row.inf_death_min!==undefined)parts.push(`infDeathMin=${row.inf_death_min}`);
+  return parts.join(', ')||'—';
+}
+
+function renderAll(rows){
+  document.getElementById('statTotal').textContent=rows.length;
+
+  if(rows.length===0){
+    document.getElementById('statAvgRes').textContent='—';
+    document.getElementById('statAvgNorm').textContent='—';
+    document.getElementById('statMaxRes').textContent='—';
+  } else {
+    const avgRes=Math.round(rows.reduce((a,r)=>a+(r.final_res||0),0)/rows.length);
+    const avgNorm=Math.round(rows.reduce((a,r)=>a+(r.final_norm||0),0)/rows.length);
+    const maxRes=Math.max(...rows.map(r=>r.peak_res||0));
+    document.getElementById('statAvgRes').textContent=avgRes;
+    document.getElementById('statAvgNorm').textContent=avgNorm;
+    document.getElementById('statMaxRes').textContent=maxRes;
+  }
+
+  const labels=rows.map((r,i)=>formatParams(r).slice(0,20)||`Run ${i+1}`);
+  resChart.data.labels=labels;
+  resChart.data.datasets[0].data=rows.map(r=>r.final_res);
+  resChart.update();
+  normChart.data.labels=labels;
+  normChart.data.datasets[0].data=rows.map(r=>r.final_norm);
+  normChart.update();
+
+  const tbody=document.getElementById('tableBody');
+  tbody.innerHTML=rows.map(r=>`
+    <tr>
+      <td>${r.experiment_name||'—'}</td>
+      <td>${formatParams(r)}</td>
+      <td class="res-c">${r.final_res}</td>
+      <td class="norm-c">${r.final_norm}</td>
+      <td class="res-c">${r.peak_res}</td>
+      <td class="norm-c">${r.peak_norm}</td>
+      <td>${r.created_at?new Date(r.created_at).toLocaleString():'—'}</td>
+    </tr>
+  `).join('');
+}
+
+function populateExperimentFilter(rows){
+  const names=[...new Set(rows.map(r=>r.experiment_name).filter(Boolean))];
+  const sel=document.getElementById('experimentFilter');
+  const current=sel.value;
+  sel.innerHTML='<option value="all">All experiments</option>'+
+    names.map(n=>`<option value="${n}">${n}</option>`).join('');
+  if(names.includes(current))sel.value=current;
+}
+
+async function loadData(){
+  document.getElementById('status').textContent='Loading...';
+  const{data,error}=await supabase.from('experiments').select('*').order('created_at',{ascending:true});
+  if(error){
+    document.getElementById('status').textContent='Error loading data: '+error.message;
+    return;
+  }
+  allRows=data;
+  populateExperimentFilter(allRows);
+  applyFilter();
+  document.getElementById('status').textContent=`Loaded ${allRows.length} total rows. Last updated ${new Date().toLocaleTimeString()}.`;
+}
+
+function applyFilter(){
+  const filterVal=document.getElementById('experimentFilter').value;
+  const filtered=filterVal==='all'?allRows:allRows.filter(r=>r.experiment_name===filterVal);
+  renderAll(filtered);
+}
+
+document.getElementById('experimentFilter').addEventListener('change',applyFilter);
+document.getElementById('refreshBtn').addEventListener('click',loadData);
+
+loadData();
+</script>
+</body>
+</html>
