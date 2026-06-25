@@ -153,12 +153,11 @@ function populateParamSelectors(rows){
 }
 
 const trendChart=new Chart(document.getElementById('trendChart'),{
-  type:'line',
+  type:'bar',
   data:{labels:[],datasets:[]},
   options:{
     responsive:true,maintainAspectRatio:false,animation:false,
     plugins:{legend:{display:true,labels:{color:'#aaa',font:{size:11}}}},
-    elements:{point:{radius:3},line:{borderWidth:2}},
     scales:{
       x:{title:{display:true,color:'#888',text:''},ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,0.06)'}},
       y:{title:{display:true,color:'#888',text:''},ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,0.06)'}}
@@ -197,9 +196,9 @@ function renderTrendChart(rows){
     return{
       label:groupKey!=='none'?`${groupKey}=${g}`:yKey,
       data:dataForGroup,
+      backgroundColor:LINE_COLORS[i%LINE_COLORS.length],
       borderColor:LINE_COLORS[i%LINE_COLORS.length],
-      backgroundColor:'transparent',
-      fill:false
+      borderWidth:1
     };
   });
 
