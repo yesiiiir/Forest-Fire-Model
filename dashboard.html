@@ -17,8 +17,7 @@ h1{font-size:16px;margin-bottom:4px;}
 .scard .label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;}
 .scard .value{font-size:18px;font-weight:bold;}
 .norm-c{color:#e07840;}.res-c{color:#2acc80;}
-#chartsRow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
-.chart-wrap{position:relative;height:300px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:10px;}
+.chart-wrap{position:relative;height:300px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:10px;margin-bottom:12px;}
 .clabel{font-size:11px;color:#aaa;margin-bottom:6px;}
 table{width:100%;border-collapse:collapse;font-size:11px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;overflow:hidden;}
 th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #2a2a2a;}
@@ -61,15 +60,9 @@ tr:hover{background:#1f1f1f;}
   </div>
 </div>
 
-<div id="chartsRow">
-  <div class="chart-wrap">
-    <div class="clabel">Final Resistant Trees by Run</div>
-    <canvas id="resChart"></canvas>
-  </div>
-  <div class="chart-wrap">
-    <div class="clabel">Final Normal Trees by Run</div>
-    <canvas id="normChart"></canvas>
-  </div>
+<div class="chart-wrap" style="height:380px;">
+  <div class="clabel">Final Resistant vs Normal Trees by Run</div>
+  <canvas id="combinedChart"></canvas>
 </div>
 
 <div class="clabel">All Results</div>
@@ -108,15 +101,20 @@ const baseChartOpts={
   }
 };
 
-const resChart=new Chart(document.getElementById('resChart'),{
+const combinedChart=new Chart(document.getElementById('combinedChart'),{
   type:'bar',
-  data:{labels:[],datasets:[{label:'Final Resistant',data:[],backgroundColor:'#2acc80'}]},
-  options:baseChartOpts
-});
-const normChart=new Chart(document.getElementById('normChart'),{
-  type:'bar',
-  data:{labels:[],datasets:[{label:'Final Normal',data:[],backgroundColor:'#e07840'}]},
-  options:baseChartOpts
+  data:{labels:[],datasets:[
+    {label:'Final Resistant',data:[],backgroundColor:'#2acc80'},
+    {label:'Final Normal',data:[],backgroundColor:'#e07840'}
+  ]},
+  options:{
+    responsive:true,maintainAspectRatio:false,animation:false,
+    plugins:{legend:{display:true,labels:{color:'#aaa',font:{size:11}}}},
+    scales:{
+      x:{ticks:{color:'#888',font:{size:9}},grid:{color:'rgba(255,255,255,0.06)'}},
+      y:{ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,0.06)'}}
+    }
+  }
 });
 
 function formatParams(row){
@@ -144,12 +142,10 @@ function renderAll(rows){
   }
 
   const labels=rows.map((r,i)=>formatParams(r).slice(0,20)||`Run ${i+1}`);
-  resChart.data.labels=labels;
-  resChart.data.datasets[0].data=rows.map(r=>r.final_res);
-  resChart.update();
-  normChart.data.labels=labels;
-  normChart.data.datasets[0].data=rows.map(r=>r.final_norm);
-  normChart.update();
+  combinedChart.data.labels=labels;
+  combinedChart.data.datasets[0].data=rows.map(r=>r.final_res);
+  combinedChart.data.datasets[1].data=rows.map(r=>r.final_norm);
+  combinedChart.update();
 
   const tbody=document.getElementById('tableBody');
   tbody.innerHTML=rows.map(r=>`
