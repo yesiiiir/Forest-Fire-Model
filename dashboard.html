@@ -8,16 +8,17 @@
 body{font-family:monospace;background:#111;color:#eee;padding:14px;font-size:12px;}
 h1{font-size:16px;margin-bottom:4px;}
 .subtitle{color:#888;font-size:12px;margin-bottom:14px;}
-#controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:8px 10px;}
+#controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:8px 10px;}
 #controls select,#controls button{font-size:11px;background:#222;color:#eee;border:1px solid #444;border-radius:4px;padding:4px 8px;cursor:pointer;}
 #controls button:hover{background:#333;}
+#controls label{color:#888;font-size:11px;}
 #status{font-size:11px;color:#888;margin-bottom:10px;}
 #statCards{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;}
 .scard{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:8px 10px;}
 .scard .label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;}
 .scard .value{font-size:18px;font-weight:bold;}
 .norm-c{color:#e07840;}.res-c{color:#2acc80;}
-.chart-wrap{position:relative;height:300px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:10px;margin-bottom:12px;}
+.chart-wrap{position:relative;height:420px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:10px;margin-bottom:12px;}
 .clabel{font-size:11px;color:#aaa;margin-bottom:6px;}
 table{width:100%;border-collapse:collapse;font-size:11px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;overflow:hidden;}
 th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #2a2a2a;}
@@ -29,13 +30,26 @@ tr:hover{background:#1f1f1f;}
 <body>
 
 <h1>Forest Fire Experiments Dashboard</h1>
-<div class="subtitle">Live results from Supabase — all parameter sweep experiments</div>
+<div class="subtitle">Live results from Supabase — works with any swept parameters</div>
 
 <div id="controls">
-  Experiment:
-  <select id="experimentFilter">
-    <option value="all">All experiments</option>
+  <label>Experiment:</label>
+  <select id="experimentFilter"><option value="all">All experiments</option></select>
+
+  <label>X-axis parameter:</label>
+  <select id="xParamSelect"></select>
+
+  <label>Group lines by:</label>
+  <select id="groupParamSelect"><option value="none">None</option></select>
+
+  <label>Y-axis (outcome):</label>
+  <select id="yOutcomeSelect">
+    <option value="final_res">Final Resistant</option>
+    <option value="final_norm">Final Normal</option>
+    <option value="peak_res">Peak Resistant</option>
+    <option value="peak_norm">Peak Normal</option>
   </select>
+
   <button id="refreshBtn">Refresh</button>
 </div>
 
@@ -43,7 +57,7 @@ tr:hover{background:#1f1f1f;}
 
 <div id="statCards">
   <div class="scard">
-    <div class="label">Total Runs</div>
+    <div class="label">Total Runs (filtered)</div>
     <div class="value" id="statTotal">—</div>
   </div>
   <div class="scard">
@@ -60,9 +74,9 @@ tr:hover{background:#1f1f1f;}
   </div>
 </div>
 
-<div class="chart-wrap" style="height:380px;">
-  <div class="clabel">Final Resistant vs Normal Trees by Run</div>
-  <canvas id="combinedChart"></canvas>
+<div class="chart-wrap">
+  <div class="clabel" id="chartTitle">Select an experiment to see trends</div>
+  <canvas id="trendChart"></canvas>
 </div>
 
 <div class="clabel">All Results</div>
@@ -91,62 +105,131 @@ const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
 let allRows=[];
+const LINE_COLORS=['#2acc80','#facc15','#38bdf8','#bb44ff','#ff5500','#e07840','#60a5fa','#f472b6','#a3e635','#fb923c'];
 
-const baseChartOpts={
-  responsive:true,maintainAspectRatio:false,animation:false,
-  plugins:{legend:{display:false}},
-  scales:{
-    x:{ticks:{color:'#888',font:{size:9}},grid:{color:'rgba(255,255,255,0.06)'}},
-    y:{ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,0.06)'}}
-  }
-};
+function getParamObj(row){
+  if(row.params&&typeof row.params==='object')return row.params;
+  const o={};
+  if(row.inf_spread!==null&&row.inf_spread!==undefined)o.infSpread=row.inf_spread;
+  if(row.inf_death_min!==null&&row.inf_death_min!==undefined)o.infDeathMin=row.inf_death_min;
+  return o;
+}
 
-const combinedChart=new Chart(document.getElementById('combinedChart'),{
-  type:'bar',
-  data:{labels:[],datasets:[
-    {label:'Final Resistant',data:[],backgroundColor:'#2acc80'},
-    {label:'Final Normal',data:[],backgroundColor:'#e07840'}
-  ]},
+function getAvailableParamKeys(rows){
+  const keys=new Set();
+  rows.forEach(r=>{
+    const p=getParamObj(r);
+    Object.keys(p).forEach(k=>keys.add(k));
+  });
+  return[...keys];
+}
+
+function formatParams(row){
+  const p=getParamObj(row);
+  return Object.entries(p).map(([k,v])=>`${k}=${v}`).join(', ')||'—';
+}
+
+function populateExperimentFilter(rows){
+  const names=[...new Set(rows.map(r=>r.experiment_name).filter(Boolean))];
+  const sel=document.getElementById('experimentFilter');
+  const current=sel.value;
+  sel.innerHTML='<option value="all">All experiments</option>'+
+    names.map(n=>`<option value="${n}">${n}</option>`).join('');
+  if(names.includes(current))sel.value=current;
+}
+
+function populateParamSelectors(rows){
+  const keys=getAvailableParamKeys(rows);
+  const xSel=document.getElementById('xParamSelect');
+  const gSel=document.getElementById('groupParamSelect');
+  const prevX=xSel.value,prevG=gSel.value;
+
+  xSel.innerHTML=keys.map(k=>`<option value="${k}">${k}</option>`).join('');
+  gSel.innerHTML='<option value="none">None</option>'+keys.map(k=>`<option value="${k}">${k}</option>`).join('');
+
+  if(keys.includes(prevX))xSel.value=prevX;
+  if(keys.includes(prevG))gSel.value=prevG;
+  else if(keys.length>1)gSel.value=keys[1];
+}
+
+const trendChart=new Chart(document.getElementById('trendChart'),{
+  type:'line',
+  data:{labels:[],datasets:[]},
   options:{
     responsive:true,maintainAspectRatio:false,animation:false,
     plugins:{legend:{display:true,labels:{color:'#aaa',font:{size:11}}}},
+    elements:{point:{radius:3},line:{borderWidth:2}},
     scales:{
-      x:{ticks:{color:'#888',font:{size:9}},grid:{color:'rgba(255,255,255,0.06)'}},
-      y:{ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,0.06)'}}
+      x:{title:{display:true,color:'#888',text:''},ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,0.06)'}},
+      y:{title:{display:true,color:'#888',text:''},ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,0.06)'}}
     }
   }
 });
 
-function formatParams(row){
-  if(row.params)return JSON.stringify(row.params);
-  const parts=[];
-  if(row.inf_spread!==null&&row.inf_spread!==undefined)parts.push(`infSpread=${row.inf_spread}`);
-  if(row.inf_death_min!==null&&row.inf_death_min!==undefined)parts.push(`infDeathMin=${row.inf_death_min}`);
-  return parts.join(', ')||'—';
+function renderTrendChart(rows){
+  const xKey=document.getElementById('xParamSelect').value;
+  const groupKey=document.getElementById('groupParamSelect').value;
+  const yKey=document.getElementById('yOutcomeSelect').value;
+
+  if(!xKey||rows.length===0){
+    trendChart.data.labels=[];
+    trendChart.data.datasets=[];
+    trendChart.update();
+    document.getElementById('chartTitle').textContent='No data to display';
+    return;
+  }
+
+  const enriched=rows.map(r=>({
+    x:getParamObj(r)[xKey],
+    group:groupKey!=='none'?getParamObj(r)[groupKey]:'all',
+    y:r[yKey]
+  })).filter(d=>d.x!==undefined&&d.y!==undefined&&d.y!==null);
+
+  const xValues=[...new Set(enriched.map(d=>d.x))].sort((a,b)=>a-b);
+  const groupValues=[...new Set(enriched.map(d=>d.group))].sort();
+
+  const datasets=groupValues.map((g,i)=>{
+    const dataForGroup=xValues.map(xv=>{
+      const matches=enriched.filter(d=>d.x===xv&&d.group===g);
+      if(matches.length===0)return null;
+      return matches.reduce((a,d)=>a+d.y,0)/matches.length;
+    });
+    return{
+      label:groupKey!=='none'?`${groupKey}=${g}`:yKey,
+      data:dataForGroup,
+      borderColor:LINE_COLORS[i%LINE_COLORS.length],
+      backgroundColor:'transparent',
+      fill:false
+    };
+  });
+
+  trendChart.data.labels=xValues;
+  trendChart.data.datasets=datasets;
+  trendChart.options.scales.x.title.text=xKey;
+  trendChart.options.scales.y.title.text=yKey;
+  trendChart.update();
+
+  document.getElementById('chartTitle').textContent=
+    `${yKey} vs ${xKey}`+(groupKey!=='none'?`, grouped by ${groupKey}`:'');
 }
 
-function renderAll(rows){
+function renderStats(rows){
   document.getElementById('statTotal').textContent=rows.length;
-
   if(rows.length===0){
     document.getElementById('statAvgRes').textContent='—';
     document.getElementById('statAvgNorm').textContent='—';
     document.getElementById('statMaxRes').textContent='—';
-  } else {
-    const avgRes=Math.round(rows.reduce((a,r)=>a+(r.final_res||0),0)/rows.length);
-    const avgNorm=Math.round(rows.reduce((a,r)=>a+(r.final_norm||0),0)/rows.length);
-    const maxRes=Math.max(...rows.map(r=>r.peak_res||0));
-    document.getElementById('statAvgRes').textContent=avgRes;
-    document.getElementById('statAvgNorm').textContent=avgNorm;
-    document.getElementById('statMaxRes').textContent=maxRes;
+    return;
   }
+  const avgRes=Math.round(rows.reduce((a,r)=>a+(r.final_res||0),0)/rows.length);
+  const avgNorm=Math.round(rows.reduce((a,r)=>a+(r.final_norm||0),0)/rows.length);
+  const maxRes=Math.max(...rows.map(r=>r.peak_res||0));
+  document.getElementById('statAvgRes').textContent=avgRes;
+  document.getElementById('statAvgNorm').textContent=avgNorm;
+  document.getElementById('statMaxRes').textContent=maxRes;
+}
 
-  const labels=rows.map((r,i)=>formatParams(r).slice(0,20)||`Run ${i+1}`);
-  combinedChart.data.labels=labels;
-  combinedChart.data.datasets[0].data=rows.map(r=>r.final_res);
-  combinedChart.data.datasets[1].data=rows.map(r=>r.final_norm);
-  combinedChart.update();
-
+function renderTable(rows){
   const tbody=document.getElementById('tableBody');
   tbody.innerHTML=rows.map(r=>`
     <tr>
@@ -161,13 +244,13 @@ function renderAll(rows){
   `).join('');
 }
 
-function populateExperimentFilter(rows){
-  const names=[...new Set(rows.map(r=>r.experiment_name).filter(Boolean))];
-  const sel=document.getElementById('experimentFilter');
-  const current=sel.value;
-  sel.innerHTML='<option value="all">All experiments</option>'+
-    names.map(n=>`<option value="${n}">${n}</option>`).join('');
-  if(names.includes(current))sel.value=current;
+function applyFilter(){
+  const filterVal=document.getElementById('experimentFilter').value;
+  const filtered=filterVal==='all'?allRows:allRows.filter(r=>r.experiment_name===filterVal);
+  populateParamSelectors(filtered);
+  renderStats(filtered);
+  renderTrendChart(filtered);
+  renderTable(filtered);
 }
 
 async function loadData(){
@@ -183,13 +266,10 @@ async function loadData(){
   document.getElementById('status').textContent=`Loaded ${allRows.length} total rows. Last updated ${new Date().toLocaleTimeString()}.`;
 }
 
-function applyFilter(){
-  const filterVal=document.getElementById('experimentFilter').value;
-  const filtered=filterVal==='all'?allRows:allRows.filter(r=>r.experiment_name===filterVal);
-  renderAll(filtered);
-}
-
 document.getElementById('experimentFilter').addEventListener('change',applyFilter);
+document.getElementById('xParamSelect').addEventListener('change',applyFilter);
+document.getElementById('groupParamSelect').addEventListener('change',applyFilter);
+document.getElementById('yOutcomeSelect').addEventListener('change',applyFilter);
 document.getElementById('refreshBtn').addEventListener('click',loadData);
 
 loadData();
