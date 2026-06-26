@@ -13,7 +13,7 @@ h1{font-size:16px;margin-bottom:4px;}
 #controls button:hover{background:#333;}
 #controls label{color:#888;font-size:11px;}
 #status{font-size:11px;color:#888;margin-bottom:10px;}
-#statCards{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:12px;}
+#statCards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px;}
 .scard{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:8px 10px;}
 .scard .label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;}
 .scard .value{font-size:18px;font-weight:bold;}
@@ -34,7 +34,7 @@ tr:hover{background:#1f1f1f;}
 
 <div id="controls">
   <label>Experiment:</label>
-  <select id="experimentFilter"><option value="all">All experiments</option></select>
+  <select id="experimentFilter"></select>
 
   <label>X-axis parameter:</label>
   <select id="xParamSelect"></select>
@@ -57,7 +57,7 @@ tr:hover{background:#1f1f1f;}
 
 <div id="statCards">
   <div class="scard">
-    <div class="label">Total Runs (filtered)</div>
+    <div class="label">Total Runs</div>
     <div class="value" id="statTotal">—</div>
   </div>
   <div class="scard">
@@ -67,10 +67,6 @@ tr:hover{background:#1f1f1f;}
   <div class="scard">
     <div class="label">Avg Final Normal</div>
     <div class="value norm-c" id="statAvgNorm">—</div>
-  </div>
-  <div class="scard">
-    <div class="label">Highest Peak Resistant</div>
-    <div class="value res-c" id="statMaxRes">—</div>
   </div>
 </div>
 
@@ -133,9 +129,9 @@ function populateExperimentFilter(rows){
   const names=[...new Set(rows.map(r=>r.experiment_name).filter(Boolean))];
   const sel=document.getElementById('experimentFilter');
   const current=sel.value;
-  sel.innerHTML='<option value="all">All experiments</option>'+
-    names.map(n=>`<option value="${n}">${n}</option>`).join('');
+  sel.innerHTML=names.map(n=>`<option value="${n}">${n}</option>`).join('');
   if(names.includes(current))sel.value=current;
+  else if(names.length>0)sel.value=names[0];
 }
 
 function populateParamSelectors(rows){
@@ -217,15 +213,12 @@ function renderStats(rows){
   if(rows.length===0){
     document.getElementById('statAvgRes').textContent='—';
     document.getElementById('statAvgNorm').textContent='—';
-    document.getElementById('statMaxRes').textContent='—';
     return;
   }
   const avgRes=Math.round(rows.reduce((a,r)=>a+(r.final_res||0),0)/rows.length);
   const avgNorm=Math.round(rows.reduce((a,r)=>a+(r.final_norm||0),0)/rows.length);
-  const maxRes=Math.max(...rows.map(r=>r.peak_res||0));
   document.getElementById('statAvgRes').textContent=avgRes;
   document.getElementById('statAvgNorm').textContent=avgNorm;
-  document.getElementById('statMaxRes').textContent=maxRes;
 }
 
 function renderTable(rows){
@@ -245,7 +238,7 @@ function renderTable(rows){
 
 function applyFilter(){
   const filterVal=document.getElementById('experimentFilter').value;
-  const filtered=filterVal==='all'?allRows:allRows.filter(r=>r.experiment_name===filterVal);
+  const filtered=allRows.filter(r=>r.experiment_name===filterVal);
   populateParamSelectors(filtered);
   renderStats(filtered);
   renderTrendChart(filtered);
