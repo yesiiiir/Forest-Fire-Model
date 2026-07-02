@@ -26,17 +26,10 @@ function buildCombinations(paramRanges){
 
 const EXPERIMENTS=[
   {
-    name:'infSpread_vs_infDeathMin_wide',
+    name:'infSpread_vs_infDeathMin_new',
     paramRanges:{
-      infSpread:[0.05,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,0.97],
-      infDeathMin:[5,15,30,45,60,75,90,110,130,150,180,220]
-    }
-  },
-  {
-    name:'fireSpread_vs_infSpread',
-    paramRanges:{
-      fireSpreadNorm:[0.05,0.15,0.25,0.35,0.45,0.55,0.65,0.75,0.85,0.97],
-      infSpread:[0.05,0.15,0.25,0.35,0.45,0.55,0.65,0.75,0.85,0.97]
+      infSpread:[0.1,0.2,0.32,0.5,0.7],
+      infDeathMin:[10,25,35,60,100]
     }
   },
 ];
@@ -69,7 +62,13 @@ function runExperiment(experiment){
             final_res:msg.result.finalRes,
             final_norm:msg.result.finalNorm,
             peak_res:msg.result.peakRes,
-            peak_norm:msg.result.peakNorm
+            peak_norm:msg.result.peakNorm,
+            time_series_res:msg.result.avgRes,
+            time_series_norm:msg.result.avgNorm,
+            q1_res:msg.result.q1Res,
+            q3_res:msg.result.q3Res,
+            q1_norm:msg.result.q1Norm,
+            q3_norm:msg.result.q3Norm,
           });
 
           if(error){
