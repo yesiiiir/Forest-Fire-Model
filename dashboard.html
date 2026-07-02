@@ -9,7 +9,8 @@ body{font-family:monospace;background:#111;color:#eee;padding:14px;font-size:12p
 h1{font-size:16px;margin-bottom:4px;}
 .subtitle{color:#888;font-size:12px;margin-bottom:14px;}
 #controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:8px 10px;}
-#controls select,#controls button{font-size:11px;background:#222;color:#eee;border:1px solid #444;border-radius:4px;padding:4px 8px;cursor:pointer;}
+#controls select,#controls button,#controls input{font-size:11px;background:#222;color:#eee;border:1px solid #444;border-radius:4px;padding:4px 8px;cursor:pointer;}
+#controls input{cursor:text;}
 #controls button:hover{background:#333;}
 #controls label{color:#888;font-size:11px;}
 #status{font-size:11px;color:#888;margin-bottom:10px;}
@@ -18,8 +19,9 @@ h1{font-size:16px;margin-bottom:4px;}
 .scard .label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;}
 .scard .value{font-size:18px;font-weight:bold;}
 .norm-c{color:#e07840;}.res-c{color:#2acc80;}
-.chart-wrap{position:relative;height:420px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:10px;margin-bottom:12px;}
+.chart-wrap{position:relative;height:520px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;padding:10px;margin-bottom:12px;}
 .clabel{font-size:11px;color:#aaa;margin-bottom:6px;}
+#chartsRow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
 table{width:100%;border-collapse:collapse;font-size:11px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:6px;overflow:hidden;}
 th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #2a2a2a;}
 th{color:#888;text-transform:uppercase;font-size:10px;letter-spacing:.04em;background:#161616;}
@@ -30,27 +32,33 @@ tr:hover{background:#1f1f1f;}
 <body>
 
 <h1>Forest Fire Experiments Dashboard</h1>
-<div class="subtitle">Live results from Supabase — works with any swept parameters</div>
+<div class="subtitle">Live results from Supabase</div>
 
 <div id="controls">
   <label>Experiment:</label>
   <select id="experimentFilter"></select>
 
-  <label>X-axis parameter:</label>
-  <select id="xParamSelect"></select>
-
   <label>Group lines by:</label>
   <select id="groupParamSelect"><option value="none">None</option></select>
 
-  <label>Y-axis (outcome):</label>
-  <select id="yOutcomeSelect">
-    <option value="final_res">Final Resistant</option>
-    <option value="final_norm">Final Normal</option>
-    <option value="peak_res">Peak Resistant</option>
-    <option value="peak_norm">Peak Normal</option>
+  <label>Tree type:</label>
+  <select id="treeTypeSelect">
+    <option value="res">Resistant</option>
+    <option value="norm">Normal</option>
   </select>
 
   <button id="refreshBtn">Refresh</button>
+
+  <label>Y min:</label>
+  <input type="number" id="yMinInput" style="width:70px;" placeholder="0">
+  <label>Y max:</label>
+  <input type="number" id="yMaxInput" style="width:70px;" placeholder="auto">
+  <label>X min (yr):</label>
+  <input type="number" id="xMinInput" style="width:60px;" placeholder="0">
+  <label>X max (yr):</label>
+  <input type="number" id="xMaxInput" style="width:60px;" placeholder="10">
+  <button id="applyAxesBtn">Apply</button>
+  <button id="resetAxesBtn">Reset to default</button>
 </div>
 
 <div id="status">Loading...</div>
@@ -71,8 +79,10 @@ tr:hover{background:#1f1f1f;}
 </div>
 
 <div class="chart-wrap">
-  <div class="clabel" id="chartTitle">Select an experiment to see trends</div>
-  <canvas id="trendChart"></canvas>
+  <div class="clabel" id="chartTitle">
+    <span id="chartTitleText">Population over time</span>
+  </div>
+  <canvas id="timeSeriesChart"></canvas>
 </div>
 
 <div class="clabel">All Results</div>
@@ -100,23 +110,37 @@ const SUPABASE_URL='https://dkooarbkotlxibvhmrhk.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRrb29hcmJrb3RseGlidmhtcmhrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzMzU2OTYsImV4cCI6MjA5NzkxMTY5Nn0.xZJ3ANhM-AVIWSt5xWuu17P5CEkWfNRBeqh7cY774bg';
 const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
+const EXP_YEARS=10;
+const SAMPLE_EVERY=40;
+const TICKS_PER_YEAR=2000;
+const NUM_SAMPLES=Math.floor(EXP_YEARS*TICKS_PER_YEAR/SAMPLE_EVERY);
+
+const LINE_COLORS=[
+  {line:'#2acc80',band:'rgba(42,204,128,0.15)'},
+  {line:'#facc15',band:'rgba(250,204,21,0.15)'},
+  {line:'#38bdf8',band:'rgba(56,189,248,0.15)'},
+  {line:'#bb44ff',band:'rgba(187,68,255,0.15)'},
+  {line:'#ff5500',band:'rgba(255,85,0,0.15)'},
+  {line:'#e07840',band:'rgba(224,120,64,0.15)'},
+  {line:'#60a5fa',band:'rgba(96,165,250,0.15)'},
+  {line:'#f472b6',band:'rgba(244,114,182,0.15)'},
+  {line:'#a3e635',band:'rgba(163,230,53,0.15)'},
+  {line:'#fb923c',band:'rgba(251,146,60,0.15)'},
+];
+
 let allRows=[];
-const LINE_COLORS=['#2acc80','#facc15','#38bdf8','#bb44ff','#ff5500','#e07840','#60a5fa','#f472b6','#a3e635','#fb923c'];
 
 function getParamObj(row){
   if(row.params&&typeof row.params==='object')return row.params;
   const o={};
-  if(row.inf_spread!==null&&row.inf_spread!==undefined)o.infSpread=row.inf_spread;
-  if(row.inf_death_min!==null&&row.inf_death_min!==undefined)o.infDeathMin=row.inf_death_min;
+  if(row.inf_spread!=null)o.infSpread=row.inf_spread;
+  if(row.inf_death_min!=null)o.infDeathMin=row.inf_death_min;
   return o;
 }
 
 function getAvailableParamKeys(rows){
   const keys=new Set();
-  rows.forEach(r=>{
-    const p=getParamObj(r);
-    Object.keys(p).forEach(k=>keys.add(k));
-  });
+  rows.forEach(r=>{Object.keys(getParamObj(r)).forEach(k=>keys.add(k));});
   return[...keys];
 }
 
@@ -134,103 +158,161 @@ function populateExperimentFilter(rows){
   else if(names.length>0)sel.value=names[0];
 }
 
-function populateParamSelectors(rows){
+function populateGroupSelector(rows){
   const keys=getAvailableParamKeys(rows);
-  const xSel=document.getElementById('xParamSelect');
-  const gSel=document.getElementById('groupParamSelect');
-  const prevX=xSel.value,prevG=gSel.value;
-
-  xSel.innerHTML=keys.map(k=>`<option value="${k}">${k}</option>`).join('');
-  gSel.innerHTML='<option value="none">None</option>'+keys.map(k=>`<option value="${k}">${k}</option>`).join('');
-
-  if(keys.includes(prevX))xSel.value=prevX;
-  if(keys.includes(prevG))gSel.value=prevG;
-  else if(keys.length>1)gSel.value=keys[1];
+  const sel=document.getElementById('groupParamSelect');
+  const current=sel.value;
+  sel.innerHTML='<option value="none">None</option>'+keys.map(k=>`<option value="${k}">${k}</option>`).join('');
+  if(keys.includes(current))sel.value=current;
+  else if(keys.length>0)sel.value=keys[0];
 }
 
-const trendChart=new Chart(document.getElementById('trendChart'),{
-  type:'bar',
+const DEFAULT_X_MIN=0;
+const DEFAULT_X_MAX=EXP_YEARS;
+const DEFAULT_Y_MIN=0;
+const DEFAULT_Y_MAX=undefined;
+
+let axisState={xMin:DEFAULT_X_MIN,xMax:DEFAULT_X_MAX,yMin:DEFAULT_Y_MIN,yMax:DEFAULT_Y_MAX};
+
+const timeSeriesChart=new Chart(document.getElementById('timeSeriesChart'),{
+  type:'line',
   data:{labels:[],datasets:[]},
   options:{
     responsive:true,maintainAspectRatio:false,animation:false,
-    plugins:{legend:{display:true,labels:{color:'#aaa',font:{size:11}}}},
+    plugins:{legend:{display:true,labels:{color:'#aaa',font:{size:10},boxWidth:10,padding:8}}},
+    elements:{point:{radius:0},line:{borderWidth:2}},
     scales:{
-      x:{title:{display:true,color:'#888',text:''},ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,0.06)'}},
-      y:{title:{display:true,color:'#888',text:''},ticks:{color:'#888',font:{size:10}},grid:{color:'rgba(255,255,255,0.06)'}}
+      x:{
+        title:{display:true,color:'#888',text:'Year'},
+        ticks:{color:'#888',font:{size:9},maxTicksLimit:11,
+          callback:(v)=>Math.round(v*SAMPLE_EVERY/TICKS_PER_YEAR)+'yr'},
+        grid:{color:'rgba(255,255,255,0.06)'},
+        min:axisState.xMin/(SAMPLE_EVERY/TICKS_PER_YEAR),
+        max:axisState.xMax/(SAMPLE_EVERY/TICKS_PER_YEAR)
+      },
+      y:{
+        title:{display:true,color:'#888',text:'Tree count'},
+        ticks:{color:'#888',font:{size:10},
+          callback:(v)=>v>=1000?(v/1000).toFixed(1)+'k':v,
+          stepSize:250},
+        grid:{color:'rgba(255,255,255,0.06)'},
+        min:axisState.yMin,
+        max:axisState.yMax
+      }
     }
   }
 });
 
-function renderTrendChart(rows){
-  const xKey=document.getElementById('xParamSelect').value;
-  const groupKey=document.getElementById('groupParamSelect').value;
-  const yKey=document.getElementById('yOutcomeSelect').value;
+function applyAxisBounds(){
+  const yMinVal=document.getElementById('yMinInput').value;
+  const yMaxVal=document.getElementById('yMaxInput').value;
+  const xMinVal=document.getElementById('xMinInput').value;
+  const xMaxVal=document.getElementById('xMaxInput').value;
 
-  if(!xKey||rows.length===0){
-    trendChart.data.labels=[];
-    trendChart.data.datasets=[];
-    trendChart.update();
-    document.getElementById('chartTitle').textContent='No data to display';
+  axisState.yMin=yMinVal===''?DEFAULT_Y_MIN:Number(yMinVal);
+  axisState.yMax=yMaxVal===''?DEFAULT_Y_MAX:Number(yMaxVal);
+  axisState.xMin=xMinVal===''?DEFAULT_X_MIN:Number(xMinVal);
+  axisState.xMax=xMaxVal===''?DEFAULT_X_MAX:Number(xMaxVal);
+
+  const samplesPerYear=TICKS_PER_YEAR/SAMPLE_EVERY;
+  timeSeriesChart.options.scales.x.min=axisState.xMin*samplesPerYear;
+  timeSeriesChart.options.scales.x.max=axisState.xMax*samplesPerYear;
+  timeSeriesChart.options.scales.y.min=axisState.yMin;
+  timeSeriesChart.options.scales.y.max=axisState.yMax;
+  timeSeriesChart.update();
+}
+
+function resetAxisBounds(){
+  document.getElementById('yMinInput').value='';
+  document.getElementById('yMaxInput').value='';
+  document.getElementById('xMinInput').value='';
+  document.getElementById('xMaxInput').value='';
+  axisState={xMin:DEFAULT_X_MIN,xMax:DEFAULT_X_MAX,yMin:DEFAULT_Y_MIN,yMax:DEFAULT_Y_MAX};
+  const samplesPerYear=TICKS_PER_YEAR/SAMPLE_EVERY;
+  timeSeriesChart.options.scales.x.min=axisState.xMin*samplesPerYear;
+  timeSeriesChart.options.scales.x.max=axisState.xMax*samplesPerYear;
+  timeSeriesChart.options.scales.y.min=axisState.yMin;
+  timeSeriesChart.options.scales.y.max=axisState.yMax;
+  timeSeriesChart.update();
+}
+
+function renderTimeSeriesChart(rows){
+  const groupKey=document.getElementById('groupParamSelect').value;
+  const treeType=document.getElementById('treeTypeSelect').value;
+  const isRes=treeType==='res';
+
+  if(rows.length===0){
+    timeSeriesChart.data.labels=[];
+    timeSeriesChart.data.datasets=[];
+    timeSeriesChart.update();
     return;
   }
 
-  const enriched=rows.map(r=>({
-    x:getParamObj(r)[xKey],
-    group:groupKey!=='none'?getParamObj(r)[groupKey]:'all',
-    y:r[yKey]
-  })).filter(d=>d.x!==undefined&&d.y!==undefined&&d.y!==null);
+  const validRows=rows.filter(r=>r[isRes?'time_series_res':'time_series_norm']);
 
-  const xValues=[...new Set(enriched.map(d=>d.x))].sort((a,b)=>Number(a)-Number(b));
-  const groupValues=[...new Set(enriched.map(d=>d.group))].sort((a,b)=>Number(a)-Number(b));
+  const labels=Array.from({length:NUM_SAMPLES},(_,i)=>i);
+  const datasets=[];
 
-  const datasets=groupValues.map((g,i)=>{
-    const dataForGroup=xValues.map(xv=>{
-      const matches=enriched.filter(d=>d.x===xv&&d.group===g);
-      if(matches.length===0)return null;
-      return matches.reduce((a,d)=>a+d.y,0)/matches.length;
+  if(groupKey==='none'||validRows.length===0){
+    const avgSeries=Array.from({length:NUM_SAMPLES},(_,i)=>{
+      const vals=validRows.map(r=>(r[isRes?'time_series_res':'time_series_norm'][i]||0));
+      return vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length):null;
     });
-    return{
-      label:groupKey!=='none'?`${groupKey}=${g}`:yKey,
-      data:dataForGroup,
-      backgroundColor:LINE_COLORS[i%LINE_COLORS.length],
-      borderColor:LINE_COLORS[i%LINE_COLORS.length],
-      borderWidth:1
-    };
-  });
+    const q1Series=Array.from({length:NUM_SAMPLES},(_,i)=>validRows.length?Math.round(validRows.reduce((a,r)=>a+(r[isRes?'q1_res':'q1_norm']?.[i]||0),0)/validRows.length):null);
+    const q3Series=Array.from({length:NUM_SAMPLES},(_,i)=>validRows.length?Math.round(validRows.reduce((a,r)=>a+(r[isRes?'q3_res':'q3_norm']?.[i]||0),0)/validRows.length):null);
 
-  trendChart.data.labels=xValues;
-  trendChart.data.datasets=datasets;
-  trendChart.options.scales.x.title.text=xKey;
-  trendChart.options.scales.y.title.text=yKey;
-  trendChart.update();
+    const c=LINE_COLORS[0];
+    datasets.push({label:'Average',data:avgSeries,borderColor:c.line,backgroundColor:'transparent',fill:false});
+    datasets.push({label:'IQR band',data:q3Series,borderColor:'transparent',backgroundColor:c.band,fill:'+1',pointRadius:0,borderWidth:0});
+    datasets.push({label:'IQR low',data:q1Series,borderColor:'transparent',backgroundColor:c.band,fill:false,pointRadius:0,borderWidth:0});
+  } else {
+    const groupValues=[...new Set(validRows.map(r=>getParamObj(r)[groupKey]))].sort((a,b)=>Number(a)-Number(b));
+    groupValues.forEach((gv,i)=>{
+      const groupRows=validRows.filter(r=>getParamObj(r)[groupKey]==gv);
+      if(!groupRows.length)return;
+      const avgSeries=Array.from({length:NUM_SAMPLES},(_,j)=>{
+        const vals=groupRows.map(r=>(r[isRes?'time_series_res':'time_series_norm']?.[j]||0));
+        return Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+      });
+      const q1Series=Array.from({length:NUM_SAMPLES},(_,j)=>Math.round(groupRows.reduce((a,r)=>a+(r[isRes?'q1_res':'q1_norm']?.[j]||0),0)/groupRows.length));
+      const q3Series=Array.from({length:NUM_SAMPLES},(_,j)=>Math.round(groupRows.reduce((a,r)=>a+(r[isRes?'q3_res':'q3_norm']?.[j]||0),0)/groupRows.length));
+      const c=LINE_COLORS[i%LINE_COLORS.length];
+      datasets.push({label:`${groupKey}=${gv}`,data:avgSeries,borderColor:c.line,backgroundColor:'transparent',fill:false});
+      datasets.push({label:`_q3_${gv}`,data:q3Series,borderColor:'transparent',backgroundColor:c.band,fill:'+1',pointRadius:0,borderWidth:0});
+      datasets.push({label:`_q1_${gv}`,data:q1Series,borderColor:'transparent',backgroundColor:c.band,fill:false,pointRadius:0,borderWidth:0});
+    });
+  }
 
-  document.getElementById('chartTitle').textContent=
-    `${yKey} vs ${xKey}`+(groupKey!=='none'?`, grouped by ${groupKey}`:'');
+  timeSeriesChart.options.plugins.legend.labels.filter=(item)=>!item.text.startsWith('_');
+  timeSeriesChart.data.labels=labels;
+  timeSeriesChart.data.datasets=datasets;
+  timeSeriesChart.update('none');
+
+  const treeLabel=isRes?'Resistant':'Normal';
+  document.getElementById('chartTitleText').textContent=
+    `${treeLabel} tree population over time`+(groupKey!=='none'?`, grouped by ${groupKey}`:'');
 }
 
 function renderStats(rows){
   document.getElementById('statTotal').textContent=rows.length;
-  if(rows.length===0){
+  if(!rows.length){
     document.getElementById('statAvgRes').textContent='—';
     document.getElementById('statAvgNorm').textContent='—';
     return;
   }
-  const avgRes=Math.round(rows.reduce((a,r)=>a+(r.final_res||0),0)/rows.length);
-  const avgNorm=Math.round(rows.reduce((a,r)=>a+(r.final_norm||0),0)/rows.length);
-  document.getElementById('statAvgRes').textContent=avgRes;
-  document.getElementById('statAvgNorm').textContent=avgNorm;
+  document.getElementById('statAvgRes').textContent=Math.round(rows.reduce((a,r)=>a+(r.final_res||0),0)/rows.length);
+  document.getElementById('statAvgNorm').textContent=Math.round(rows.reduce((a,r)=>a+(r.final_norm||0),0)/rows.length);
 }
 
 function renderTable(rows){
-  const tbody=document.getElementById('tableBody');
-  tbody.innerHTML=rows.map(r=>`
+  document.getElementById('tableBody').innerHTML=rows.map(r=>`
     <tr>
       <td>${r.experiment_name||'—'}</td>
       <td>${formatParams(r)}</td>
-      <td class="res-c">${r.final_res}</td>
-      <td class="norm-c">${r.final_norm}</td>
-      <td class="res-c">${r.peak_res}</td>
-      <td class="norm-c">${r.peak_norm}</td>
+      <td class="res-c">${r.final_res??'—'}</td>
+      <td class="norm-c">${r.final_norm??'—'}</td>
+      <td class="res-c">${r.peak_res??'—'}</td>
+      <td class="norm-c">${r.peak_norm??'—'}</td>
       <td>${r.created_at?new Date(r.created_at).toLocaleString():'—'}</td>
     </tr>
   `).join('');
@@ -239,30 +321,28 @@ function renderTable(rows){
 function applyFilter(){
   const filterVal=document.getElementById('experimentFilter').value;
   const filtered=allRows.filter(r=>r.experiment_name===filterVal);
-  populateParamSelectors(filtered);
+  populateGroupSelector(filtered);
   renderStats(filtered);
-  renderTrendChart(filtered);
+  renderTimeSeriesChart(filtered);
   renderTable(filtered);
 }
 
 async function loadData(){
   document.getElementById('status').textContent='Loading...';
   const{data,error}=await sb.from('experiments').select('*').order('created_at',{ascending:true});
-  if(error){
-    document.getElementById('status').textContent='Error loading data: '+error.message;
-    return;
-  }
+  if(error){document.getElementById('status').textContent='Error: '+error.message;return;}
   allRows=data;
   populateExperimentFilter(allRows);
   applyFilter();
-  document.getElementById('status').textContent=`Loaded ${allRows.length} total rows. Last updated ${new Date().toLocaleTimeString()}.`;
+  document.getElementById('status').textContent=`Loaded ${allRows.length} rows. Last updated ${new Date().toLocaleTimeString()}.`;
 }
 
 document.getElementById('experimentFilter').addEventListener('change',applyFilter);
-document.getElementById('xParamSelect').addEventListener('change',applyFilter);
 document.getElementById('groupParamSelect').addEventListener('change',applyFilter);
-document.getElementById('yOutcomeSelect').addEventListener('change',applyFilter);
+document.getElementById('treeTypeSelect').addEventListener('change',applyFilter);
 document.getElementById('refreshBtn').addEventListener('click',loadData);
+document.getElementById('applyAxesBtn').addEventListener('click',applyAxisBounds);
+document.getElementById('resetAxesBtn').addEventListener('click',resetAxisBounds);
 
 loadData();
 </script>
