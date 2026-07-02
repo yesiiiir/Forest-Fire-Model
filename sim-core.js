@@ -125,6 +125,8 @@ function runSim(overrides){
 
   const accumRes=new Array(NUM_SAMPLES).fill(0);
   const accumNorm=new Array(NUM_SAMPLES).fill(0);
+  const allRunsRes=[];
+  const allRunsNorm=[];
 
   for(let run=0;run<RUNS;run++){
     let g=buildFullGrid(0.5,true,P);
@@ -147,6 +149,8 @@ function runSim(overrides){
       }
     }
     for(let i=0;i<NUM_SAMPLES;i++){accumRes[i]+=samplesRes[i]||0;accumNorm[i]+=samplesNorm[i]||0;}
+    allRunsRes.push(samplesRes);
+    allRunsNorm.push(samplesNorm);
   }
 
   const avgRes=accumRes.map(v=>Math.round(v/RUNS));
@@ -155,7 +159,24 @@ function runSim(overrides){
   const finalNorm=avgNorm[avgNorm.length-1];
   const peakRes=avgRes.reduce((a,b)=>Math.max(a,b),0);
   const peakNorm=avgNorm.reduce((a,b)=>Math.max(a,b),0);
-  return{finalRes,finalNorm,peakRes,peakNorm};
+
+  // compute interquartile range at each sample point
+  function iqr(arr){
+    const sorted=[...arr].sort((a,b)=>a-b);
+    const q1=sorted[Math.floor(sorted.length*0.25)];
+    const q3=sorted[Math.floor(sorted.length*0.75)];
+    return{q1,q3};
+  }
+
+  const iqrRes=Array.from({length:NUM_SAMPLES},(_,i)=>iqr(allRunsRes.map(run=>run[i]||0)));
+  const iqrNorm=Array.from({length:NUM_SAMPLES},(_,i)=>iqr(allRunsNorm.map(run=>run[i]||0)));
+
+  return{
+    finalRes,finalNorm,peakRes,peakNorm,
+    avgRes,avgNorm,
+    q1Res:iqrRes.map(v=>v.q1),q3Res:iqrRes.map(v=>v.q3),
+    q1Norm:iqrNorm.map(v=>v.q1),q3Norm:iqrNorm.map(v=>v.q3),
+  };
 }
 
 module.exports={runSim,PARAMS};
