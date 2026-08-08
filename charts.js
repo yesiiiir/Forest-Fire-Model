@@ -4,28 +4,45 @@ const baseChartOpts={responsive:true,maintainAspectRatio:false,animation:false,
   scales:{x:{display:false},y:{min:0,ticks:{color:'#888',font:{size:10},maxTicksLimit:4},grid:{color:'rgba(255,255,255,0.06)'}}}};
 
 const treeChart=new Chart(document.getElementById('treeChart'),{type:'line',data:{labels:[],datasets:[
-  {label:'Normal',data:[],borderColor:'#e07840',backgroundColor:'rgba(224,120,64,0.15)',fill:true},
-  {label:'Resistant',data:[],borderColor:'#2acc80',backgroundColor:'rgba(42,204,128,0.12)',fill:true},
-  {label:'Sapling',data:[],borderColor:'#7aaa40',backgroundColor:'rgba(122,170,64,0.07)',fill:true},
-]},options:baseChartOpts});
+  {label:'Softwood', data:[],borderColor:'#aadd55',backgroundColor:'rgba(170,221,85,0.12)',fill:true},
+  {label:'Pioneer',  data:[],borderColor:'#66bb44',backgroundColor:'rgba(102,187,68,0.12)',fill:true},
+  {label:'Hardwood', data:[],borderColor:'#8B5E3C',backgroundColor:'rgba(139,94,60,0.12)',fill:true},
+  {label:'Redwood',  data:[],borderColor:'#8B3A3A',backgroundColor:'rgba(139,58,58,0.12)',fill:true},
+  {label:'Sapling',  data:[],borderColor:'#4a7a3a',backgroundColor:'rgba(74,122,58,0.07)',fill:true},
+]},options:{...baseChartOpts,plugins:{legend:{display:true,labels:{color:'#aaa',font:{size:10},boxWidth:10,padding:6}}}}});
 
 const fireChart=new Chart(document.getElementById('fireChart'),{type:'line',data:{labels:[],datasets:[
-  {label:'Fire',data:[],borderColor:'#ff5500',backgroundColor:'rgba(255,85,0,0.18)',fill:true},
+  {label:'Fire',   data:[],borderColor:'#ff5500',backgroundColor:'rgba(255,85,0,0.18)',fill:true},
   {label:'Infected',data:[],borderColor:'#bb44ff',backgroundColor:'rgba(187,68,255,0.12)',fill:true},
+  {label:'Choppers',data:[],borderColor:'#ffdd00',backgroundColor:'transparent',fill:false},
+  {label:'Planters',data:[],borderColor:'#44aaff',backgroundColor:'transparent',fill:false},
+]},options:baseChartOpts});
+
+const humanChart=new Chart(document.getElementById('humanChart'),{type:'line',data:{labels:[],datasets:[
+  {label:'Choppers',data:[],borderColor:'#ffdd00',backgroundColor:'rgba(255,221,0,0.12)',fill:true},
+  {label:'Planters',data:[],borderColor:'#44aaff',backgroundColor:'rgba(68,170,255,0.12)',fill:true},
 ]},options:baseChartOpts});
 
 let chartTick=0;
 function updateCharts(){
-  const len=normHist.length,labels=Array.from({length:len},(_,i)=>i);
+  const len=softHist.length,labels=Array.from({length:len},(_,i)=>i);
   treeChart.data.labels=labels;
-  treeChart.data.datasets[0].data=[...normHist];
-  treeChart.data.datasets[1].data=[...resHist];
-  treeChart.data.datasets[2].data=[...sapHist];
+  treeChart.data.datasets[0].data=[...softHist];
+  treeChart.data.datasets[1].data=[...pionHist];
+  treeChart.data.datasets[2].data=[...hardHist];
+  treeChart.data.datasets[3].data=[...resistHist];
+  treeChart.data.datasets[4].data=[...sapHist];
   treeChart.update('none');
   fireChart.data.labels=labels;
   fireChart.data.datasets[0].data=[...fireHist];
   fireChart.data.datasets[1].data=[...infHist];
+  fireChart.data.datasets[2].data=[];
+  fireChart.data.datasets[3].data=[];
   fireChart.update('none');
+  humanChart.data.labels=labels;
+  humanChart.data.datasets[0].data=TOGGLES.humans?[...chopperHist]:[];
+  humanChart.data.datasets[1].data=TOGGLES.humans?[...planterHist]:[];
+  humanChart.update('none');
 }
 
 const EXP_Y_TICKS=[0,250,500,750,1000,3000,5000,7000,9000];
