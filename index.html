@@ -14,12 +14,18 @@
     <div class="chart-wrap"><canvas id="treeChart"></canvas></div>
     <div class="clabel">Fire &amp; infection over time</div>
     <div class="chart-wrap"><canvas id="fireChart"></canvas></div>
+    <div class="clabel">Human populations over time</div>
+    <div class="chart-wrap"><canvas id="humanChart"></canvas></div>
     <div class="legend">
-      <span><span class="leg-dot" style="background:#e07840"></span>Normal</span>
-      <span><span class="leg-dot" style="background:#2acc80"></span>Resistant</span>
-      <span><span class="leg-dot" style="background:#7aaa40"></span>Sapling</span>
+      <span><span class="leg-dot" style="background:#aadd55"></span>Softwood</span>
+      <span><span class="leg-dot" style="background:#66bb44"></span>Pioneer</span>
+      <span><span class="leg-dot" style="background:#8B5E3C"></span>Hardwood</span>
+      <span><span class="leg-dot" style="background:#8B3A3A"></span>Redwood</span>
+      <span><span class="leg-dot" style="background:#4a7a3a"></span>Sapling</span>
       <span><span class="leg-dot" style="background:#ff5500"></span>Fire</span>
       <span><span class="leg-dot" style="background:#bb44ff"></span>Infected</span>
+      <span><span class="leg-dot" style="background:#ffdd00"></span>Choppers</span>
+      <span><span class="leg-dot" style="background:#44aaff"></span>Planters</span>
     </div>
   </div>
 </div>
@@ -42,6 +48,7 @@
     <button id="togFire"       class="ctrl-btn tog-on">Fire: ON</button>
     <button id="togNbrSpread"  class="ctrl-btn tog-on">Infection Spread: ON</button>
     <button id="togRain"       class="ctrl-btn tog-on">Rain: ON</button>
+    <button id="togHumans"     class="ctrl-btn tog-off">Humans: OFF</button>
   </div>
 </div>
 
@@ -119,6 +126,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="params.js"></script>
 <script src="simulation.js"></script>
+<script src="humans.js"></script>
 <script src="experiment.js"></script>
 <script src="charts.js"></script>
 <script src="main.js"></script>
