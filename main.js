@@ -11,6 +11,7 @@ const TOGGLE_DEFS=[
   {key:'fire',        id:'togFire',       label:'Fire'},
   {key:'nbrSpread',   id:'togNbrSpread',  label:'Infection Spread'},
   {key:'rain',        id:'togRain',       label:'Rain'},
+  {key:'humans',      id:'togHumans',     label:'Humans'},
 ];
 
 function updateToggleBtn(def){
@@ -37,6 +38,12 @@ TOGGLE_DEFS.forEach(def=>{
       for(let r=0;r<ROWS&&seeded<5;r++)for(let c=0;c<COLS&&seeded<5;c++){
         if(grid[r][c].state===RES&&rndF()<.12){grid[r][c]=makeCell(INFECTED);seeded++;}
       }
+    }
+    if(def.key==='humans'&&TOGGLES.humans){
+      initHumans();
+    }
+    if(def.key==='humans'&&!TOGGLES.humans){
+      humans=[];
     }
     updateToggleBtn(def);
   });
@@ -82,13 +89,15 @@ document.getElementById('sweepParam').dispatchEvent(new Event('change'));
 
 function draw(){
   ctx.fillStyle='#1a1208';ctx.fillRect(0,0,W,H);
-  let normCt=0,resCt=0,sapCt=0,fireCt=0,infCt=0;
+  let softCt=0,pionCt=0,hardCt=0,resistCt=0,sapCt=0,fireCt=0,infCt=0;
   for(let r=0;r<ROWS;r++){
     for(let c=0;c<COLS;c++){
       const s=grid[r][c].state;
       if(s===EMPTY)continue;
-      if(s===NORM){normCt++;ctx.fillStyle='#8b3a10';}
-      else if(s===RES){resCt++;ctx.fillStyle='#1a6b3c';}
+      if(s===SOFTWOOD){softCt++;ctx.fillStyle=TREE_TYPES[SOFTWOOD].color;}
+      else if(s===PIONEER){pionCt++;ctx.fillStyle=TREE_TYPES[PIONEER].color;}
+      else if(s===HARDWOOD){hardCt++;ctx.fillStyle=TREE_TYPES[HARDWOOD].color;}
+      else if(s===RESISTANT){resistCt++;ctx.fillStyle=TREE_TYPES[RESISTANT].color;}
       else if(s===SAPLING){sapCt++;ctx.fillStyle='#4a7a3a';}
       else if(s===FIRE){fireCt++;const fl=.7+Math.random()*.3;ctx.fillStyle=`rgb(${Math.floor(255*fl)},${Math.floor(55*fl)},0)`;}
       else if(s===EMBER){ctx.fillStyle='#2a0d00';}
@@ -96,6 +105,8 @@ function draw(){
       ctx.fillRect(c*CELL,r*CELL,CELL-1,CELL-1);
     }
   }
+  if(TOGGLES.humans)drawHumans(ctx);
+
   for(const f of flashEffects){
     const alpha=(1-f.age/10)*.7;
     ctx.fillStyle=f.type==='fire'?`rgba(255,220,50,${alpha})`:`rgba(100,180,255,${alpha})`;
@@ -110,11 +121,15 @@ function draw(){
   document.getElementById('livebar').innerHTML=
     `<div class="lstat">Year: <span>${currentYear}</span></div>`+
     `<div class="lstat">Season: <span>${season.name}${iStr}</span></div>`+
-    `<div class="lstat">Normal: <span class="norm-c">${normCt}</span></div>`+
-    `<div class="lstat">Resistant: <span class="res-c">${resCt}</span></div>`+
+    `<div class="lstat">Softwood: <span style="color:${TREE_TYPES[SOFTWOOD].color}">${softCt}</span></div>`+
+    `<div class="lstat">Pioneer: <span style="color:${TREE_TYPES[PIONEER].color}">${pionCt}</span></div>`+
+    `<div class="lstat">Hardwood: <span style="color:${TREE_TYPES[HARDWOOD].color}">${hardCt}</span></div>`+
+    `<div class="lstat">Redwood: <span style="color:${TREE_TYPES[RESISTANT].color}">${resistCt}</span></div>`+
     `<div class="lstat">Saplings: <span>${sapCt}</span></div>`+
     `<div class="lstat">Fire: <span class="fire-c">${fireCt}</span></div>`+
-    (TOGGLES.infection?`<div class="lstat">Infected: <span class="inf-c">${infCt}</span></div>`:'');
+    (TOGGLES.infection?`<div class="lstat">Infected: <span class="inf-c">${infCt}</span></div>`:'')+
+    (TOGGLES.humans?`<div class="lstat">Choppers: <span style="color:#ffdd00">${humans.filter(h=>h.type===0).length}</span></div>`+
+    `<div class="lstat">Planters: <span style="color:#44aaff">${humans.filter(h=>h.type===1).length}</span></div>`:'');
 
   if(agg.samples>0){
     document.getElementById('avgNorm').textContent=Math.round(agg.sumNorm/agg.samples);
